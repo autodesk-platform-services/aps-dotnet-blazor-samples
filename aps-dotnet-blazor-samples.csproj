@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -14,10 +14,6 @@
     <Content Remove="Data\creation-jobs.json" />
     <Content Remove="Data\linking-jobs.json" />
     <Content Remove="Data\sheet-creation-jobs.json" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <None Remove="README.md" />
   </ItemGroup>
 
   <ItemGroup>
