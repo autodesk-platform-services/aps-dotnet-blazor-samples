@@ -173,3 +173,4 @@ $RECYCLE.BIN/
 .env*
 !.env.example
 secrets.*
+/Data

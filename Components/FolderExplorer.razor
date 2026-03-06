@@ -1,0 +1,281 @@
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+
+@if (_isLoading)
+{
+    <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 40px;">
+        <FluentProgressRing />
+        <span>Loading folder structure...</span>
+    </FluentStack>
+}
+else if (!string.IsNullOrEmpty(_errorMessage))
+{
+    <FluentMessageBar Intent="MessageIntent.Error">
+        @_errorMessage
+    </FluentMessageBar>
+}
+else if (_folders != null && _folders.Any())
+{
+    <FluentTreeView Items="@_folders"
+                    @bind-SelectedItem="@_selectedTreeItem" 
+                    Style="width:100%;">
+        <ItemTemplate>
+            @context.Text
+        </ItemTemplate>
+    </FluentTreeView>
+}
+else
+{
+    <FluentMessageBar Intent="MessageIntent.Info">
+        No folders found in this project.
+    </FluentMessageBar>
+}
+
+@code {
+    [Parameter]
+    public string? HubId { get; set; }
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    [Parameter]
+    public EventCallback<FolderSelectedEventArgs> OnFolderSelectionChanged { get; set; }   
+
+    private bool _isLoading = false;
+    private string? _errorMessage;
+    private IEnumerable<ITreeViewItem>? _folders = new List<ITreeViewItem>();
+    private ITreeViewItem? _selectedTreeItem;
+    private Dictionary<TreeViewItem, string> _folderIdMap = new();
+    private string? _hubId;
+
+    private Icon _iconCollapsed = new Icons.Regular.Size20.Folder();
+    private Icon _iconExpanded = new Icons.Regular.Size20.FolderOpen();
+
+    protected override async Task OnInitializedAsync()
+    {
+        var rootFolder = await LoadFolders();
+        _folders = rootFolder.Items;
+    }
+
+    protected override async Task OnParametersSetAsync()
+    {
+        // Reload if ProjectId or HubId changes
+        if (!string.IsNullOrEmpty(ProjectId))
+        {
+            var rootFolder = await LoadFolders();
+            _folders = rootFolder.Items;
+        }
+    }
+
+    protected override void OnAfterRender(bool firstRender)
+    {
+        // Handle selection changes
+        if (_selectedTreeItem != null && _selectedTreeItem is TreeViewItem treeItem)
+        {
+            if (_folderIdMap.TryGetValue(treeItem, out var folderId))
+            {
+                OnFolderSelectedInternal(treeItem, folderId);
+            }
+        }
+    }
+
+    private async Task<TreeViewItem> LoadFolders()
+    {
+        // Create a dummy root item to hold all top-level folders
+        var dummyRoot = new TreeViewItem
+        {
+            Text = "Root",
+            IconCollapsed = _iconCollapsed,
+            IconExpanded = _iconExpanded,
+            Expanded = true,
+            Items = new List<TreeViewItem>()
+        };
+
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            _folderIdMap.Clear();
+            StateHasChanged();
+
+            // Use provided HubId parameter, or find it if not provided
+            if (!string.IsNullOrEmpty(HubId))
+            {
+                _hubId = HubId;
+            }
+            else
+            {
+                await FindHubId();
+            }
+
+            if (string.IsNullOrEmpty(_hubId))
+            {
+                _errorMessage = "Could not find hub for this project";
+                return dummyRoot;
+            }
+
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(                
+                hubId: _hubId,
+                projectId: ProjectId!, 
+                accessToken: UserSession.AccessToken);
+
+            var folderItems = new List<TreeViewItem>();
+
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    var folderId = folder.Id ?? string.Empty;
+                    var folderName = folder.Attributes?.Name ?? "Unknown Folder";
+
+                    var node = new TreeViewItem
+                    {
+                        Text = folderName,
+                        IconCollapsed = _iconCollapsed,
+                        IconExpanded = _iconExpanded,
+                        Expanded = false,
+                        Items = new List<TreeViewItem>()
+                    };
+
+                    // Map the TreeViewItem to its folder ID
+                    _folderIdMap[node] = folderId;
+
+                    // Load all children recursively upfront
+                    await LoadFolderChildrenRecursive(node);
+
+                    folderItems.Add(node);
+                }
+            }
+
+            dummyRoot.Items = folderItems;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading folders: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+
+        return dummyRoot;
+    }
+
+    private async Task FindHubId()
+    {
+        try
+        {
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
+
+            if (hubs.Data != null)
+            {
+                foreach (var hub in hubs.Data)
+                {
+                    var hubId = hub.Id ?? string.Empty;
+
+                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try
+                    {
+                        var projects = await DataManagementClient.GetHubProjectsAsync(
+                            accessToken: UserSession.AccessToken,
+                            hubId: hubId);
+
+                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                        if (project != null)
+                        {
+                            _hubId = hubId;
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finding hub: {ex.Message}");
+        }
+    }
+
+    private async Task LoadFolderChildrenRecursive(TreeViewItem parentNode)
+    {
+        try
+        {
+            if (!_folderIdMap.TryGetValue(parentNode, out var parentFolderId))
+                return;
+
+            var contents = await DataManagementClient.GetFolderContentsAsync(                
+                projectId: ProjectId!,
+                folderId: parentFolderId,
+                accessToken: UserSession.AccessToken);
+
+            var children = new List<TreeViewItem>();
+
+            if (contents.Data != null)
+            {
+                foreach (var item in contents.Data)
+                {
+                    if (item is FolderData folderData)
+                    {
+                        var folderId = folderData.Id ?? string.Empty;
+                        var folderName = folderData.Attributes?.Name ?? "Unknown Folder";
+
+                        var childNode = new TreeViewItem
+                        {
+                            Text = folderName,
+                            IconCollapsed = _iconCollapsed,
+                            IconExpanded = _iconExpanded,
+                            Expanded = false,
+                            Items = new List<TreeViewItem>()
+                        };
+
+                        // Map the child TreeViewItem to its folder ID
+                        _folderIdMap[childNode] = folderId;
+
+                        // Recursively load all nested children
+                        await LoadFolderChildrenRecursive(childNode);
+
+                        children.Add(childNode);
+                    }
+                }
+            }
+
+            parentNode.Items = children;
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading children for {parentNode.Text}: {ex.Message}");
+        }
+    }
+
+    private void OnFolderSelectedInternal(TreeViewItem treeItem, string folderId)
+    {
+        // Automatically expand/collapse the folder when selected
+        treeItem.Expanded = !treeItem.Expanded;
+
+        // Notify parent component
+        if (OnFolderSelectionChanged.HasDelegate)
+        {
+            _ = OnFolderSelectionChanged.InvokeAsync(new FolderSelectedEventArgs
+            {
+                FolderId = folderId,
+                FolderName = treeItem.Text ?? string.Empty
+            });
+        }
+    }
+
+    public class FolderSelectedEventArgs
+    {
+        public string FolderId { get; set; } = string.Empty;
+        public string FolderName { get; set; } = string.Empty;
+    }
+}

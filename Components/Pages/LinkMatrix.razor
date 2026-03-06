@@ -1,0 +1,882 @@
+@page "/{ProjectId}/manage-links"
+@using ApsSamples.Extensions
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+@inject IAccLinkedFilesService AccLinkedFilesService
+@inject RevitAutomationTools RevitAutomationTools
+@inject ILinkingJobStatusService LinkingJobStatusService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Manage Revit Links - @_projectName</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+        <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/manage-links-projects"))">
+        Back to Projects
+    </FluentButton>
+    <div>
+        <h1>Manage Revit Links</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+        @if (_pendingChanges.Any())
+        {
+            @if (_isApplyingChanges)
+            {
+                <FluentButton Appearance="Appearance.Accent"
+                              OnClick="ShowConfirmationDialog"
+                              Disabled="true">
+                    <FluentProgressRing Style="width: 16px; height: 16px; margin-right: 8px;" />
+                    Applying...
+                </FluentButton>
+            }
+            else if (HasActiveWorkItems())
+            {
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size20.Clock())"
+                              OnClick="ShowConfirmationDialog"
+                              Disabled="true">
+                    Processing...
+                </FluentButton>
+            }
+            else
+            {
+                <FluentCounterBadge Count="@_pendingChanges.Count" Appearance="Appearance.Lightweight" HorizontalPosition="90">
+                    <FluentButton Appearance="Appearance.Accent"
+                                  IconStart="@(new Icons.Regular.Size20.Save())"
+                                  OnClick="ShowConfirmationDialog">
+                        Apply Changes
+                    </FluentButton>
+                </FluentCounterBadge>
+            }
+        }
+
+        @if (_isLoading)
+        {
+            
+        }
+        else
+        {
+            <FluentButton Appearance="Appearance.Neutral"
+                          IconStart="@(new Icons.Regular.Size20.ArrowClockwise())"
+                          OnClick="RefreshMatrix"
+                          Title="Refresh the link matrix">
+                Refresh
+            </FluentButton>
+        }
+
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.History())"
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/revit-links-change-tracking"))"
+                      Title="View links change history">
+            Changelog
+        </FluentButton>
+
+    </FluentStack>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+        <FluentButton Appearance="Appearance.Accent" OnClick="LoadLinkMatrix">Retry</FluentButton>
+    }
+    else
+    {
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="15">
+            <div style="overflow-x: auto; max-height: 70vh;">
+                @if (_isLoading)
+                {
+                    <table style="border-collapse: collapse; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="position: sticky; left: 0; background: var(--neutral-layer-2); padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: left; font-weight: 600; min-width: 200px; z-index: 2;">
+                                    Model Name
+                                </th>
+                                @for (int i = 0; i < 5; i++)
+                                {
+                                    <th style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: center; font-weight: 600; color: var(--neutral-foreground-hint); opacity: 0.5;">
+                                        Loading...
+                                    </th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @for (int row = 0; row < 5; row++)
+                            {
+                                <tr>
+                                    <td style="position: sticky; left: 0; background: var(--neutral-layer-2); padding: 12px; border: 1px solid var(--neutral-stroke-rest); font-weight: 500; z-index: 1; color: var(--neutral-foreground-hint); opacity: 0.5;">
+                                        Loading...
+                                    </td>
+                                    @for (int col = 0; col < 5; col++)
+                                    {
+                                        <td style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: center; background-color: var(--neutral-layer-1);">
+                                            @if (row == 2 && col == 2)
+                                            {
+                                                <FluentProgressRing Style="width: 20px; height: 20px;" />
+                                            }
+                                            else
+                                            {
+                                                <span style="color: var(--neutral-foreground-hint); opacity: 0.3;">—</span>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else if (_models != null && _models.Any())
+                {
+                    <table style="border-collapse: collapse; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="position: sticky; left: 0; background: var(--neutral-layer-2); padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: left; font-weight: 600; min-width: 200px; z-index: 2;">
+                                    Model Name
+                                </th>
+                                @foreach (var model in _models)
+                                {
+                                    <th style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: center; font-weight: 600;">
+                                        @model.ModelName
+                                    </th>
+                                }
+                            </tr>
+                        </thead>
+                        <tbody>
+                            @foreach (var rowModel in _models)
+                            {
+                                var modelHasActiveWorkItem = HasActiveWorkItemForModel(rowModel.ModelName);
+                                <tr style="@(modelHasActiveWorkItem ? "background: rgba(0, 120, 212, 0.05);" : "")">
+                                    <td style="position: sticky; left: 0; background: var(--neutral-layer-2); padding: 12px; border: 1px solid var(--neutral-stroke-rest); font-weight: 500; z-index: 1;">
+                                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                                            @if (modelHasActiveWorkItem)
+                                            {
+                                                <FluentProgressRing Style="width: 16px; height: 16px;" Title="Processing changes..." />
+                                            }
+                                            <span>@rowModel.ModelName</span>
+                                        </FluentStack>
+                                    </td>
+                                    @foreach (var colModel in _models)
+                                    {
+                                        var linkKey = $"{rowModel.ItemId}:::{colModel.ItemId}";
+                                        var currentlyLinked = IsLinked(rowModel, colModel);
+                                        var hasPendingChange = _pendingChanges.ContainsKey(linkKey);
+                                        var pendingAction = hasPendingChange ? _pendingChanges[linkKey] : LinkAction.None;
+                                        var willBeLinked = pendingAction == LinkAction.Add ? true : pendingAction == LinkAction.Remove ? false : currentlyLinked;
+                                        var hasActiveWorkItem = HasActiveWorkItemForModel(rowModel.ModelName);
+
+                                        <td style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: center; background-color: @GetCellBackgroundWithPending(rowModel, colModel, hasPendingChange, hasActiveWorkItem);">
+                                            @if (rowModel.ItemId == colModel.ItemId)
+                                            {
+                                                <span style="color: var(--neutral-foreground-hint);">—</span>
+                                            }
+                                            else if (hasActiveWorkItem)
+                                            {
+                                                <FluentProgressRing Style="width: 20px; height: 20px;" Title="Processing changes..." />
+                                            }
+                                            else if (hasPendingChange)
+                                            {
+                                                @if (pendingAction == LinkAction.Add)
+                                                {
+                                                    <FluentButton Appearance="Appearance.Lightweight"
+                                                                  IconOnly="true"
+                                                                  OnClick="@(() => CancelChange(linkKey))"
+                                                                  Title="Cancel adding link">
+                                                        <FluentIcon Value="@(new Icons.Regular.Size20.Link())" Color="Color.Warning" />
+                                                    </FluentButton>
+                                                }
+                                                else if (pendingAction == LinkAction.Remove)
+                                                {
+                                                    <FluentButton Appearance="Appearance.Lightweight"
+                                                                  IconOnly="true"
+                                                                  OnClick="@(() => CancelChange(linkKey))"
+                                                                  Title="Cancel removing link">
+                                                        <FluentIcon Value="@(new Icons.Regular.Size20.LinkDismiss())" Color="Color.Warning" />
+                                                    </FluentButton>
+                                                }
+                                            }
+                                            else if (currentlyLinked)
+                                            {
+                                                <FluentButton Appearance="Appearance.Lightweight"
+                                                              IconOnly="true"
+                                                              OnClick="@(() => RemoveLink(rowModel, colModel))"
+                                                              Title="Remove link">
+                                                    <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" Color="Color.Error" />
+                                                </FluentButton>
+                                            }
+                                            else
+                                            {
+                                                <FluentButton Appearance="Appearance.Lightweight"
+                                                              IconOnly="true"
+                                                              OnClick="@(() => AddLink(rowModel, colModel))"
+                                                              Title="Add link">
+                                                    <FluentIcon Value="@(new Icons.Regular.Size20.Add())" Color="Color.Success" />
+                                                </FluentButton>
+                                            }
+                                        </td>
+                                    }
+                                </tr>
+                            }
+                        </tbody>
+                    </table>
+                }
+                else
+                {
+                    <FluentMessageBar Intent="MessageIntent.Info">
+                        No Revit models found in this project.
+                    </FluentMessageBar>
+                }
+            </div>
+
+            @if (_models != null && _models.Any())
+            {
+                <div style="display: flex; gap: 20px; padding: 10px; background: var(--neutral-layer-3); border-radius: 4px;">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Add())" Color="Color.Success" />
+                        <span style="font-size: 14px;">Add link (+)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" Color="Color.Error" />
+                        <span style="font-size: 14px;">Remove link (X)</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Link())" Color="Color.Warning" />
+                        <span style="font-size: 14px;">Pending addition</span>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        <span style="color: var(--neutral-foreground-hint);">—</span>
+                        <span style="font-size: 14px;">Same model</span>
+                    </div>
+                </div>
+            }
+        </FluentStack>
+    }
+</FluentStack>
+
+<FluentDialog @bind-Hidden="@_hideConfirmDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Warning())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.PaneHeader">Confirm Apply Changes</FluentLabel>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+            <p>You are about to apply <strong>@_pendingChanges.Count change(s)</strong> to the link matrix.</p>
+            <ul style="margin: 0; padding-left: 20px;">
+                @{
+                    var addCount = _pendingChanges.Count(kvp => kvp.Value == LinkAction.Add);
+                    var removeCount = _pendingChanges.Count(kvp => kvp.Value == LinkAction.Remove);
+                }
+                @if (addCount > 0)
+                {
+                    <li style="color: var(--success-foreground);">Add @addCount link(s)</li>
+                }
+                @if (removeCount > 0)
+                {
+                    <li style="color: var(--error-foreground);">Remove @removeCount link(s)</li>
+                }
+            </ul>
+            <p style="margin-top: 10px;"><strong>Do you want to proceed?</strong></p>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent" OnClick="ConfirmApplyChanges">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Checkmark())" /> Confirm
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral" OnClick="CancelApplyChanges">
+            <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" /> Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private string? _projectName;
+    private string? _hubId;
+    private string? _region;
+    private bool _isLoading = true;
+    private string? _errorMessage;
+    private List<RevitModel>? _models;
+    private Dictionary<string, List<string>> _linkMatrix = new();
+    private Dictionary<string, LinkAction> _pendingChanges = new();
+    private bool _hideConfirmDialog = true;
+    private bool _isApplyingChanges = false;
+    private int _activeWorkItemsCount = 0;
+    private System.Threading.Timer? _workItemPollingTimer;
+
+    public enum LinkAction
+    {
+        None,
+        Add,
+        Remove
+    }
+
+    public class RevitModel
+    {
+        public string ModelName { get; set; } = string.Empty;
+        public string ItemId { get; set; } = string.Empty;
+        public string VersionId { get; set; } = string.Empty;
+        public bool IsRevit { get; set; }
+        public string? ProjectGuid { get; set; }
+        public string? ModelGuid { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            return;
+        }
+
+        await LoadLinkMatrix();
+
+        // Start polling for active workitems every 5 seconds
+        _workItemPollingTimer = new System.Threading.Timer(async _ =>
+        {
+            await CheckActiveWorkItems();
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5));
+    }
+
+    public void Dispose()
+    {
+        _workItemPollingTimer?.Dispose();
+    }
+
+    private async Task LoadLinkMatrix()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            _models = new List<RevitModel>();
+            _linkMatrix = new Dictionary<string, List<string>>();
+            StateHasChanged();
+
+            // Get project details
+            await LoadProjectDetails();
+
+            // Get all folders in the project
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(
+                accessToken: UserSession.AccessToken,
+                hubId: _hubId!,
+                projectId: ProjectId!);
+
+            // Recursively find all Revit files
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    await ProcessFolder(folder.Id ?? string.Empty);
+                }
+            }
+
+            // Sort models by name
+            _models = _models.OrderBy(m => m.ModelName).ToList();
+
+            // Load links for each model
+            await LoadLinksForAllModels();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading link matrix: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadProjectDetails()
+    {
+        try
+        {
+            // Try to get project from all hubs
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
+
+            if (hubs.Data != null)
+            {
+                foreach (var hub in hubs.Data)
+                {
+                    var hubId = hub.Id ?? string.Empty;
+
+                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try
+                    {
+                        var projects = await DataManagementClient.GetHubProjectsAsync(
+                            accessToken: UserSession.AccessToken,
+                            hubId: hubId);
+
+                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                        if (project != null)
+                        {
+                            _projectName = project.Attributes?.Name ?? "Unknown Project";
+                            _hubId = hubId;
+                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading project details: {ex.Message}");
+        }
+    }
+
+    private async Task ProcessFolder(string folderId)
+    {
+        try
+        {
+            var contents = await DataManagementClient.GetFolderContentsAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: ProjectId!,
+                folderId: folderId);
+
+            if (contents.Data != null)
+            {
+                foreach (var item in contents.Data)
+                {
+                    if (item is FolderData folderData)
+                    {
+                        await ProcessFolder(folderData.Id ?? string.Empty);
+                    }
+                    else if (item is ItemData itemData)
+                    {
+                        var displayName = itemData.Attributes?.DisplayName ?? "Unknown";
+
+                        // Only process Revit files (.rvt) and exclude templates
+                        if (displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) &&
+                            !displayName.ToLower().Contains("template"))
+                        {
+                            var itemId = itemData.Id ?? string.Empty;
+                            var versionId = itemData.Relationships?.Tip?.Data?.Id ?? string.Empty;
+
+                            if (!string.IsNullOrEmpty(versionId))
+                            {
+                                var model = new RevitModel
+                                {
+                                    ModelName = displayName,
+                                    ItemId = itemId,
+                                    VersionId = versionId,
+                                    IsRevit = true
+                                };
+
+                                // Fetch version metadata to get ProjectGuid and ModelGuid
+                                await LoadModelMetadata(model);
+
+                                _models!.Add(model);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error processing folder {folderId}: {ex.Message}");
+        }
+    }
+
+    private async Task LoadLinksForAllModels()
+    {
+        foreach (var model in _models ?? new List<RevitModel>())
+        {
+            try
+            {
+                var response = await AccLinkedFilesService.GetLinkedFilesAsync(
+                    UserSession.AccessToken,
+                    ProjectId!,
+                    model.VersionId);
+
+                if (response?.LinkedFiles?.Results != null)
+                {
+                    var linkedModelNames = response.LinkedFiles.Results
+                        .Select(l => l.ModelName)
+                        .Where(n => !string.IsNullOrEmpty(n))
+                        .ToList();
+
+                    _linkMatrix[model.ItemId] = linkedModelNames!;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Error loading links for {model.ModelName}: {ex.Message}");
+                _linkMatrix[model.ItemId] = new List<string>();
+            }
+        }
+    }
+
+    private async Task LoadModelMetadata(RevitModel model)
+    {
+        try
+        {
+            // Get version details to extract ProjectGuid and ModelGuid from extension data
+            var version = await DataManagementClient.GetVersionAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: ProjectId!,
+                versionId: model.VersionId);
+
+            if (version?.Data?.Attributes?.Extension?.Data != null)
+            {
+                var extensionData = version.Data.Attributes.Extension.Data;
+
+                // Try to get projectGuid from extension data
+                if (extensionData.TryGetValue("projectGuid", out var projectGuidObj))
+                {
+                    model.ProjectGuid = projectGuidObj?.ToString();
+                }
+
+                // Try to get modelGuid from extension data
+                if (extensionData.TryGetValue("modelGuid", out var modelGuidObj))
+                {
+                    model.ModelGuid = modelGuidObj?.ToString();
+                }
+
+                Console.WriteLine($"Loaded metadata for {model.ModelName}:");
+                Console.WriteLine($"  ProjectGuid: {model.ProjectGuid}");
+                Console.WriteLine($"  ModelGuid: {model.ModelGuid}");
+            }
+            else
+            {
+                Console.WriteLine($"No extension data found for {model.ModelName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading metadata for {model.ModelName}: {ex.Message}");
+        }
+    }
+
+    private bool IsLinked(RevitModel rowModel, RevitModel colModel)
+    {
+        if (rowModel.ItemId == colModel.ItemId)
+            return false;
+
+        if (_linkMatrix.TryGetValue(rowModel.ItemId, out var linkedModels))
+        {
+            return linkedModels.Contains(colModel.ModelName, StringComparer.OrdinalIgnoreCase);
+        }
+
+        return false;
+    }
+
+    private string GetCellBackground(RevitModel rowModel, RevitModel colModel)
+    {
+        if (rowModel.ItemId == colModel.ItemId)
+            return "var(--neutral-layer-3)";
+
+        if (IsLinked(rowModel, colModel))
+            return "var(--success-background)";
+
+        return "transparent";
+    }
+
+    private string GetCellBackgroundWithPending(RevitModel rowModel, RevitModel colModel, bool hasPendingChange, bool hasActiveWorkItem)
+    {
+        if (rowModel.ItemId == colModel.ItemId)
+            return "var(--neutral-layer-3)";
+
+        if (hasActiveWorkItem)
+            return "rgba(0, 120, 212, 0.1)"; // Light blue for processing
+
+        if (hasPendingChange)
+            return "var(--warning-background)";
+
+        if (IsLinked(rowModel, colModel))
+            return "var(--success-background)";
+
+        return "transparent";
+    }
+
+    private async Task CheckActiveWorkItems()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(ProjectId))
+                return;
+
+            var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+
+            // Count active workitems (pending or in progress)
+            _activeWorkItemsCount = workItems.Count(w =>
+                w.Status == "pending" ||
+                w.Status == "inprogress" ||
+                w.Status == "queued" ||
+                w.Status == "publishing model");
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking active workitems: {ex.Message}");
+        }
+    }
+
+    private bool HasActiveWorkItems()
+    {
+        if (string.IsNullOrEmpty(ProjectId))
+            return false;
+
+        var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+        return workItems.Any(w =>
+            w.Status == "pending" ||
+            w.Status == "inprogress" ||
+            w.Status == "queued" ||
+            w.Status == "publishing model");
+    }
+
+    private bool HasActiveWorkItemForModel(string modelName)
+    {
+        if (string.IsNullOrEmpty(ProjectId))
+            return false;
+
+        var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+        return workItems.Any(w =>
+            w.ModelName == modelName &&
+            (w.Status == "pending" ||
+             w.Status == "inprogress" ||
+             w.Status == "queued" ||
+             w.Status == "publishing model"));
+    }
+
+    private void AddLink(RevitModel rowModel, RevitModel colModel)
+    {
+        // Don't allow adding links if model has active workitems
+        if (HasActiveWorkItemForModel(rowModel.ModelName))
+            return;
+
+        var linkKey = $"{rowModel.ItemId}:::{colModel.ItemId}";
+        _pendingChanges[linkKey] = LinkAction.Add;
+        StateHasChanged();
+    }
+
+    private void RemoveLink(RevitModel rowModel, RevitModel colModel)
+    {
+        // Don't allow removing links if model has active workitems
+        if (HasActiveWorkItemForModel(rowModel.ModelName))
+            return;
+
+        var linkKey = $"{rowModel.ItemId}:::{colModel.ItemId}";
+        _pendingChanges[linkKey] = LinkAction.Remove;
+        StateHasChanged();
+    }
+
+    private void CancelChange(string linkKey)
+    {
+        _pendingChanges.Remove(linkKey);
+        StateHasChanged();
+    }
+
+    private async Task RefreshMatrix()
+    {
+        // Clear pending changes on refresh
+        _pendingChanges.Clear();
+        await LoadLinkMatrix();
+    }
+
+    private void ShowConfirmationDialog()
+    {
+        _hideConfirmDialog = false;
+        StateHasChanged();
+    }
+
+    private void CancelApplyChanges()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmApplyChanges()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+        await ApplyChanges();
+    }
+
+    private async Task ApplyChanges()
+    {
+        try
+        {
+            _isApplyingChanges = true;
+            _errorMessage = null;
+            StateHasChanged();
+
+            Console.WriteLine($"Applying {_pendingChanges.Count} changes...");
+
+            // Group changes by host model (the model that will be modified)
+            var changesByHost = new Dictionary<string, List<LinkChange>>();
+
+            foreach (var change in _pendingChanges)
+            {
+                var keys = change.Key.Split(new[] { ":::" }, StringSplitOptions.None);
+                if (keys.Length == 2)
+                {
+                    var hostItemId = keys[0];
+                    var linkedItemId = keys[1];
+
+                    if (!changesByHost.ContainsKey(hostItemId))
+                    {
+                        changesByHost[hostItemId] = new List<LinkChange>();
+                    }
+
+                    var hostModel = _models?.FirstOrDefault(m => m.ItemId == hostItemId);
+                    var linkedModel = _models?.FirstOrDefault(m => m.ItemId == linkedItemId);
+
+                    if (hostModel != null && linkedModel != null)
+                    {
+                        changesByHost[hostItemId].Add(new LinkChange
+                        {
+                            Action = change.Value,
+                            LinkedModelName = linkedModel.ModelName,
+                            LinkedModelGuid = linkedModel.ModelGuid
+                        });
+                    }
+                }
+            }
+
+            // Process each host model that needs changes
+            foreach (var hostChange in changesByHost)
+            {
+                var hostModel = _models?.FirstOrDefault(m => m.ItemId == hostChange.Key);
+                if (hostModel == null)
+                {
+                    Console.WriteLine($"Host model not found for ItemId: {hostChange.Key}");
+                    continue;
+                }
+
+                // Prepare link modifications
+                var linksToAdd = hostChange.Value
+                    .Where(c => c.Action == LinkAction.Add)
+                    .Select(c => new LinkModification
+                    {
+                        ModelName = c.LinkedModelName,
+                        ModelGuid = c.LinkedModelGuid
+                    })
+                    .ToList();
+
+                var linksToRemove = hostChange.Value
+                    .Where(c => c.Action == LinkAction.Remove)
+                    .Select(c => new LinkModification
+                    {
+                        ModelName = c.LinkedModelName,
+                        ModelGuid = c.LinkedModelGuid
+                    })
+                    .ToList();
+
+                Console.WriteLine($"Submitting WorkItem for {hostModel.ModelName}:");
+                Console.WriteLine($"  Region: {_region ?? "US"}");
+                Console.WriteLine($"  ProjectGuid: {hostModel.ProjectGuid}");
+                Console.WriteLine($"  ModelGuid: {hostModel.ModelGuid}");
+                Console.WriteLine($"  Links to Add: {linksToAdd.Count}");
+                Console.WriteLine($"  Links to Remove: {linksToRemove.Count}");
+
+                // Submit workitem to Automation API API
+                var result = await RevitAutomationTools.LinkModification(
+                    _region ?? "US",
+                    hostModel.ProjectGuid ?? string.Empty,
+                    hostModel.ModelGuid ?? string.Empty,
+                    linksToAdd,
+                    linksToRemove);
+
+                if (result.IsSuccess)
+                {
+                    Console.WriteLine($"WorkItem submitted successfully: {result.WorkItemId}");
+
+                    // Prepare change details for tracking
+                    var changeDetails = hostChange.Value.Select(c => new LinkChangeDetail
+                    {
+                        Action = c.Action == LinkAction.Add ? "Add" : "Remove",
+                        LinkedModelName = c.LinkedModelName,
+                        LinkedModelGuid = c.LinkedModelGuid
+                    }).ToList();
+
+                    // Store workitem with model name and publish info
+                    LinkingJobStatusService.UpdateStatus(
+                        result.WorkItemId!,
+                        result.Status ?? "pending",
+                        null,
+                        hostModel.ModelName);
+
+                    // Store detailed workitem information
+                    LinkingJobStatusService.StoreLinkingJobDetails(
+                        result.WorkItemId!,
+                        ProjectId!,
+                        _projectName ?? "Unknown Project",
+                        UserSession.UserName ?? UserSession.UserEmail ?? "Unknown User",
+                        changeDetails);
+
+                    // Store publish information for automatic publishing on success
+                    // Use ItemId (the URN), not ModelGuid
+                    LinkingJobStatusService.StorePublishInfo(
+                        result.WorkItemId!,
+                        ProjectId!,
+                        hostModel.ItemId,
+                        UserSession.AccessToken!);
+                }
+                else
+                {
+                    Console.WriteLine($"Failed to submit workitem: {result.Message}");
+                    _errorMessage = $"Failed to submit workitem for {hostModel.ModelName}: {result.Message}";
+                }
+            }
+
+            // Clear pending changes
+            _pendingChanges.Clear();
+
+            // Navigate to workitem status page for this project
+            NavigationManager.NavigateTo($"/{ProjectId}/revit-links-change-tracking");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error applying changes: {ex.Message}";
+            Console.WriteLine($"Error applying changes: {ex}");
+        }
+        finally
+        {
+            _isApplyingChanges = false;
+            StateHasChanged();
+        }
+    }
+
+    // Helper class for grouping changes
+    private class LinkChange
+    {
+        public LinkAction Action { get; set; }
+        public string LinkedModelName { get; set; } = string.Empty;
+        public string? LinkedModelGuid { get; set; }
+    }
+}
+

@@ -1,0 +1,683 @@
+@page "/{ProjectId}/revit-links-change-tracking"
+@using ApsSamples.Services
+@using Microsoft.FluentUI.AspNetCore.Components
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@inject ILinkingJobStatusService LinkingJobStatusService
+@inject IRevitAutomationService RevitAutomationService
+@inject DataManagementClient DataManagementClient
+@inject NavigationManager NavigationManager
+@inject ILogger<ModelLinkingTracking> Logger
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Revit Links Change Tracking</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <FluentButton Appearance="Appearance.Lightweight" IconStart="@(new Icons.Regular.Size20.ArrowLeft())" OnClick="NavigateBackToLinkMatrix">
+        Back to Link Matrix
+    </FluentButton>
+    <div>
+        <h1>Revit Links Change Tracking</h1>
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Track the progress of your link modification jobs
+            </p>           
+    </div>
+
+    @if (_workItems == null || !_workItems.Any())
+    {
+        <FluentCard>
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" HorizontalAlignment="HorizontalAlignment.Center">
+                <FluentIcon Value="@(new Icons.Regular.Size48.TaskListSquareLtr())" Color="Color.Neutral" />
+                <h3>No Active Changes</h3>
+                <p style="color: var(--neutral-foreground-hint);">Revit Links changes will appear here when you apply modifications to the link matrix.</p>
+            </FluentStack>
+        </FluentCard>
+    }
+    else
+    {
+        <FluentCard>
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <div>
+                    <strong style="font-size: 18px;">@_currentProjectName</strong>
+                    <p style="margin: 4px 0 0 0; color: var(--neutral-foreground-hint); font-size: 13px;">
+                        @_workItems.Count @(_workItems.Count == 1 ? "change" : "changes") in this project
+                    </p>
+                </div>
+                
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="32">
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #107c10;"></div>
+                        <div>
+                            <div style="font-size: 24px; font-weight: 600; color: #107c10;">@_workItems.Count(w => w.Status == "success" || w.Status == "published")</div>
+                            <div style="font-size: 12px; color: var(--neutral-foreground-hint);">Success</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #d83b01;"></div>
+                        <div>
+                            <div style="font-size: 24px; font-weight: 600; color: #d83b01;">@_workItems.Count(w => w.Status.Contains("failed"))</div>
+                            <div style="font-size: 12px; color: var(--neutral-foreground-hint);">Failed</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #0078d4;"></div>
+                        <div>
+                            <div style="font-size: 24px; font-weight: 600; color: #0078d4;">@_workItems.Count(w => w.Status == "pending" || w.Status == "inprogress" || w.Status == "publishing model")</div>
+                            <div style="font-size: 12px; color: var(--neutral-foreground-hint);">In Progress</div>
+                        </div>
+                    </div>
+                    <div style="display: flex; align-items: center; gap: 10px;">
+                        <div style="width: 14px; height: 14px; border-radius: 50%; background-color: #8a8886;"></div>
+                        <div>
+                            <div style="font-size: 24px; font-weight: 600;">@_workItems.Count</div>
+                            <div style="font-size: 12px; color: var(--neutral-foreground-hint);">Total</div>
+                        </div>
+                    </div>
+                </FluentStack>
+            </FluentStack>
+        </FluentCard>
+        
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalAlignment="HorizontalAlignment.End" Style="margin-bottom: 8px;">
+            <FluentSelect TOption="string"
+                          Label="Filter by Status"
+                          Items="@_statusFilterOptions"
+                          @bind-SelectedOption="@_selectedStatusFilter"
+                          Style="min-width: 180px;">
+            </FluentSelect>
+        </FluentStack>
+        
+        <FluentDataGrid Items="@GetFilteredWorkItems()"
+                        ResizableColumns="false"
+                        RowSize="DataGridRowSize.Large"
+                        Style="width: 100%;">
+            <PropertyColumn Property="@(w => w.ModelName)" Sortable="true" Title="Model" />
+            <PropertyColumn Property="@(w => w.UserName)" Sortable="true" Title="User" />
+            <TemplateColumn Title="Changes" Width="100px" Sortable="true">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    @if (context.Changes != null && context.Changes.Any())
+                    {
+                        var addCount = context.Changes.Count(c => c.Action == "Add");
+                        var removeCount = context.Changes.Count(c => c.Action == "Remove");
+                        
+                        @if (addCount > 0)
+                        {
+                            <FluentBadge Appearance="Appearance.Lightweight" BackgroundColor="#107c10" Color="white">
+                                +@addCount
+                            </FluentBadge>
+                        }
+                        @if (removeCount > 0)
+                        {
+                            <FluentBadge Appearance="Appearance.Lightweight" BackgroundColor="#d83b01" Color="white">
+                                -@removeCount
+                            </FluentBadge>
+                        }
+                    }
+                    else
+                    {
+                        <span style="color: var(--neutral-foreground-hint);">-</span>
+                    }
+                </div>
+            </TemplateColumn>
+            <TemplateColumn Title="Progress" Width="150px" Sortable="true">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    @if (context.Status == "pending" || context.Status == "inprogress")
+                    {
+                        <FluentProgressRing Style="width: 20px; height: 20px;" />
+                        <span>Processing...</span>
+                    }
+                    else if (context.Status == "publishing model")
+                    {
+                        <FluentProgressRing Style="width: 20px; height: 20px;" />
+                        <span style="color: #0078d4;">Publishing...</span>
+                    }
+                    else if (context.Status == "published")
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.CheckmarkCircle())" Color="Color.Success" />
+                        <span style="color: #107c10;">Published</span>
+                    }
+                    else if (context.Status == "success")
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.CheckmarkCircle())" Color="Color.Success" />
+                        <span>Completed</span>
+                    }
+                    else if (context.Status.Contains("publish") && context.Status.Contains("failed"))
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Warning())" Color="Color.Warning" />
+                        <span style="color: #ca5010;">@context.Status</span>
+                    }
+                    else if (context.Status.Contains("failed"))
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.ErrorCircle())" Color="Color.Error" />
+                        <span>Failed</span>
+                    }
+                    else if (context.Status == "cancelled")
+                    {
+                        <FluentIcon Value="@(new Icons.Regular.Size20.DismissCircle())" Color="Color.Warning" />
+                        <span>Cancelled</span>
+                    }
+                    else
+                    {
+                        <span>@context.Status</span>
+                    }
+                </div>
+            </TemplateColumn>
+            <PropertyColumn Property="@(w => w.SubmittedAt)" Format="yyyy-MM-dd HH:mm:ss" Sortable="true" Title="Submitted At" Align="Align.Start" Width="170px" />
+            <PropertyColumn Property="@(w => w.LastUpdated)" Format="yyyy-MM-dd HH:mm:ss" Sortable="true" Title="Last Update" Align="Align.Start" Width="170px" />
+            <TemplateColumn Title="Duration" Align="Align.Center" Width="130px" Sortable="true">
+                @{
+                    var executionTime = GetExecutionTime(context);
+                }
+                @if (!string.IsNullOrEmpty(executionTime))
+                {
+                    <span>@executionTime</span>
+                }
+                else
+                {
+                    <span style="color: var(--neutral-foreground-hint);">-</span>
+                }
+            </TemplateColumn>
+            <TemplateColumn Title="Actions" Align="Align.Start" MinWidth="300px">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.Info())"
+                                  OnClick="@(() => ShowDetails(context))"
+                                  Title="View Details">
+                        Details
+                    </FluentButton>
+                    @if (!string.IsNullOrEmpty(context.ReportUrl))
+                    {
+                        <FluentButton Appearance="Appearance.Lightweight"
+                                      IconStart="@(new Icons.Regular.Size16.DocumentText())"
+                                      OnClick="@(() => OpenReport(context.ReportUrl))"
+                                      Title="View Report">
+                            Report
+                        </FluentButton>
+                    }
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.ArrowSync())"
+                                  OnClick="@(() => RefreshStatus(context.WorkItemId))"
+                                  Title="Refresh Status">
+                        Refresh
+                    </FluentButton>
+                </FluentStack>
+            </TemplateColumn>
+        </FluentDataGrid>
+    }
+</FluentStack>
+
+<FluentDialog @bind-Hidden="@_hideDetailsDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 600px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Info())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.PaneHeader">WorkItem Details</FluentLabel>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_selectedWorkItem != null)
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <div>
+                    <strong>WorkItem ID:</strong>
+                    <p style="word-break: break-all; font-family: monospace; font-size: 12px; color: var(--neutral-foreground-hint);">
+                        @_selectedWorkItem.WorkItemId
+                    </p>
+                </div>
+
+                <div>
+                    <strong>Model Name:</strong>
+                    <p>@_selectedWorkItem.ModelName</p>
+                </div>
+
+                <div>
+                    <strong>Project:</strong>
+                    <p>@_selectedWorkItem.ProjectName</p>
+                </div>
+
+                <div>
+                    <strong>User:</strong>
+                    <p>@_selectedWorkItem.UserName</p>
+                </div>
+
+                <div>
+                    <strong>Status:</strong>
+                    <p>
+                        <FluentBadge Appearance="@GetStatusAppearance(_selectedWorkItem.Status)"
+                                     BackgroundColor="@GetStatusColor(_selectedWorkItem.Status)"
+                                     Color="white">
+                            @_selectedWorkItem.Status
+                        </FluentBadge>
+                    </p>
+                </div>
+
+                <div>
+                    <strong>Created:</strong>
+                    <p>@_selectedWorkItem.CreatedAt.ToString("yyyy-MM-dd HH:mm:ss")</p>
+                </div>
+
+                <div>
+                    <strong>Last Updated:</strong>
+                    <p>@_selectedWorkItem.LastUpdated.ToString("yyyy-MM-dd HH:mm:ss")</p>
+                </div>
+
+                @if (_selectedWorkItem.Changes != null && _selectedWorkItem.Changes.Any())
+                {
+                    <div>
+                        <strong>Changes Applied:</strong>
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8" Style="margin-top: 8px;">
+                            @foreach (var change in _selectedWorkItem.Changes)
+                            {
+                                <FluentCard Style="padding: 8px; background: var(--neutral-layer-2);">
+                                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+                                        @if (change.Action == "Add")
+                                        {
+                                            <FluentIcon Value="@(new Icons.Regular.Size20.Add())" Color="Color.Success" />
+                                            <span style="color: #107c10;"><strong>Add Link:</strong></span>
+                                        }
+                                        else
+                                        {
+                                            <FluentIcon Value="@(new Icons.Regular.Size20.Dismiss())" Color="Color.Error" />
+                                            <span style="color: #d83b01;"><strong>Remove Link:</strong></span>
+                                        }
+                                        <span>@change.LinkedModelName</span>
+                                    </FluentStack>
+                                    @if (!string.IsNullOrEmpty(change.LinkedModelGuid))
+                                    {
+                                        <p style="font-size: 11px; color: var(--neutral-foreground-hint); margin: 4px 0 0 28px; font-family: monospace;">
+                                            GUID: @change.LinkedModelGuid
+                                        </p>
+                                    }
+                                </FluentCard>
+                            }
+                        </FluentStack>
+                    </div>
+                }
+
+                @if (!string.IsNullOrEmpty(_selectedWorkItem.ReportUrl))
+                {
+                    <div>
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size20.DocumentText())"
+                                      OnClick="@(() => OpenReport(_selectedWorkItem.ReportUrl))">
+                            View Full Report
+                        </FluentButton>
+                    </div>
+                }
+            </FluentStack>
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral" OnClick="CloseDetailsDialog">
+            Close
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+    @code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+    
+    private List<WorkItemInfo>? _workItems;
+    private System.Threading.Timer? _pollingTimer;
+    private bool _disposed = false;
+    private bool _hideDetailsDialog = true;
+    private WorkItemInfo? _selectedWorkItem;
+    private string? _currentProjectName;
+    
+    private string _selectedStatusFilter = "All";
+    private readonly List<string> _statusFilterOptions = new() 
+    { 
+        "All", 
+        "In Progress", 
+        "Success", 
+        "Failed",
+        "Published"
+    };
+
+    protected override void OnInitialized()
+    {
+        // Load initial workitem statuses
+        RefreshAllStatuses();
+
+        // Start polling every 5 seconds
+        _pollingTimer = new System.Threading.Timer(async _ =>
+        {
+            await PollWorkItemStatuses();
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    private void RefreshAllStatuses()
+    {
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            Logger.LogWarning("ProjectId is required but was not provided");
+            return;
+        }
+
+        var jobs = LinkingJobStatusService.GetJobsByProject(ProjectId);
+
+        // Convert linking jobs to WorkItemInfo
+        _workItems = jobs.Select(j => new WorkItemInfo
+        {
+            WorkItemId = j.WorkItemId,
+            ModelName = j.ModelName ?? ExtractModelName(j.WorkItemId),
+            ProjectName = j.ProjectName ?? "Unknown Project",
+            UserName = j.UserName ?? "Unknown User",
+            Status = j.Status,
+            ReportUrl = j.ReportUrl,
+            Changes = j.Changes,
+            CreatedAt = j.CreatedAt,
+            SubmittedAt = j.SubmittedAt,
+            LastUpdated = j.LastUpdated
+        }).ToList();
+
+        // Set current project name
+        _currentProjectName = _workItems.FirstOrDefault()?.ProjectName;
+
+        InvokeAsync(StateHasChanged);
+    }
+
+    private async Task PollWorkItemStatuses()
+    {
+        if (_disposed || _workItems == null) return;
+
+        try
+        {
+            var activeItems = _workItems.Where(w =>
+                w.Status == "pending" ||
+                w.Status == "inprogress" ||
+                w.Status == "queued").ToList();
+
+            foreach (var item in activeItems)
+            {
+                try
+                {
+                    var status = await RevitAutomationService.GetWorkItemStatusAsync(item.WorkItemId);
+
+                    var oldStatus = item.Status;
+                    item.Status = status.Status.ToLower();
+                    item.ReportUrl = status.ReportUrl;
+                    item.LastUpdated = DateTime.UtcNow;
+
+                    // Update in service
+                    LinkingJobStatusService.UpdateStatus(item.WorkItemId, status.Status, status.ReportUrl);
+
+                    Logger.LogInformation("Updated status for {WorkItemId}: {Status}", item.WorkItemId, status.Status);
+
+                    // If status changed to success, publish the model
+                    if (oldStatus != "success" && item.Status == "success")
+                    {
+                        await PublishModelForWorkItem(item.WorkItemId);
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Error polling status for {WorkItemId}", item.WorkItemId);
+                }
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error in polling timer");
+        }
+    }
+
+    private async Task RefreshStatus(string workItemId)
+    {
+        try
+        {
+            var status = await RevitAutomationService.GetWorkItemStatusAsync(workItemId);
+
+            var item = _workItems?.FirstOrDefault(w => w.WorkItemId == workItemId);
+            if (item != null)
+            {
+                var oldStatus = item.Status;
+                item.Status = status.Status.ToLower();
+                item.ReportUrl = status.ReportUrl;
+                item.LastUpdated = DateTime.UtcNow;
+
+                LinkingJobStatusService.UpdateStatus(workItemId, status.Status, status.ReportUrl);
+
+                // If status is success and we haven't published yet, publish the model
+                if (oldStatus != "success" && item.Status == "success")
+                {
+                    await PublishModelForWorkItem(workItemId);
+                }
+
+                StateHasChanged();
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error refreshing status for {WorkItemId}", workItemId);
+        }
+    }
+
+    private async Task PublishModelForWorkItem(string workItemId)
+    {
+        try
+        {
+            var item = _workItems?.FirstOrDefault(w => w.WorkItemId == workItemId);
+            if (item == null) return;
+
+            // Update status to show we're publishing
+            item.Status = "publishing model";
+            await InvokeAsync(StateHasChanged);
+
+            Logger.LogInformation("Publishing model for WorkItem {WorkItemId}", workItemId);
+
+            var statusInfo = LinkingJobStatusService.GetStatus(workItemId);
+
+            if (statusInfo == null ||
+                string.IsNullOrEmpty(statusInfo.ProjectId) ||
+                string.IsNullOrEmpty(statusInfo.ItemId) ||
+                string.IsNullOrEmpty(statusInfo.AccessToken))
+            {
+                Logger.LogWarning("Cannot publish model: Missing publish info for WorkItem {WorkItemId}", workItemId);
+                item.Status = "success (publish info missing)";
+                await InvokeAsync(StateHasChanged);
+                return;
+            }
+
+            // Create the publish payload with properly initialized nested objects
+            var publishPayload = new PublishModelPayload
+            {
+                Type = TypeCommands.Commands,
+                Attributes = new PublishModelPayloadAttributes
+                {
+                    Extension = new PublishModelPayloadAttributesExtension
+                    {
+                        Type = TypeCommandtypePublishmodel.CommandsautodeskBim360C4RModelPublish,
+                        VarVersion = "1.0.0"
+                    }
+                },
+                Relationships = new PublishModelPayloadRelationships
+                {
+                    Resources = new PublishModelPayloadRelationshipsResources
+                    {
+                        Data = new List<PublishModelPayloadRelationshipsResourcesData>
+                        {
+                            new PublishModelPayloadRelationshipsResourcesData
+                            {
+                                Type = TypeItem.Items,
+                                Id = statusInfo.ItemId
+                            }
+                        }
+                    }
+                }
+            };
+
+            // Execute publish
+            var publishResult = await DataManagementClient.ExecutePublishModelAsync(
+                projectId: statusInfo.ProjectId,
+                publishModelPayload: publishPayload,
+                accessToken: statusInfo.AccessToken);
+
+            if (publishResult != null)
+            {
+                Logger.LogInformation("Publish command created for WorkItem {WorkItemId}. CommandId: {CommandId}",
+                    workItemId, publishResult.Id);
+
+                item.Status = "published";
+                LinkingJobStatusService.UpdateStatus(workItemId, "published", item.ReportUrl);
+            }
+            else
+            {
+                Logger.LogWarning("Publish command returned no result for WorkItem {WorkItemId}", workItemId);
+                item.Status = "success (publish failed)";
+                LinkingJobStatusService.UpdateStatus(workItemId, "success (publish failed)", item.ReportUrl);
+            }
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Error publishing model for WorkItem {WorkItemId}", workItemId);
+
+            var item = _workItems?.FirstOrDefault(w => w.WorkItemId == workItemId);
+            if (item != null)
+            {
+                item.Status = "success (publish error)";
+                LinkingJobStatusService.UpdateStatus(workItemId, "success (publish error)", item.ReportUrl);
+                await InvokeAsync(StateHasChanged);
+            }
+        }
+    }
+
+    private void OpenReport(string reportUrl)
+    {
+        NavigationManager.NavigateTo(reportUrl, true);
+    }
+
+    private void NavigateBackToLinkMatrix()
+    {
+        if (!string.IsNullOrEmpty(ProjectId))
+        {
+            NavigationManager.NavigateTo($"/{ProjectId}/link-matrix");
+        }
+        else
+        {
+            // Fallback to projects if no ProjectId is available (shouldn't happen with new routing)
+            Logger.LogWarning("ProjectId is missing, navigating to projects page");
+            NavigationManager.NavigateTo("/manage-links-projects");
+        }
+    }
+
+    private void ShowDetails(WorkItemInfo workItem)
+    {
+        _selectedWorkItem = workItem;
+        _hideDetailsDialog = false;
+        StateHasChanged();
+    }
+
+    private void CloseDetailsDialog()
+    {
+        _hideDetailsDialog = true;
+        _selectedWorkItem = null;
+        StateHasChanged();
+    }
+
+    private IQueryable<WorkItemInfo> GetFilteredWorkItems()
+    {
+        if (_workItems == null)
+            return Enumerable.Empty<WorkItemInfo>().AsQueryable();
+
+        var filtered = _selectedStatusFilter switch
+        {
+            "In Progress" => _workItems.Where(w => 
+                w.Status == "pending" || 
+                w.Status == "inprogress" || 
+                w.Status == "queued" ||
+                w.Status == "publishing model"),
+            "Success" => _workItems.Where(w => w.Status == "success"),
+            "Failed" => _workItems.Where(w => w.Status.Contains("failed")),
+            "Published" => _workItems.Where(w => w.Status == "published"),
+            _ => _workItems
+        };
+
+        return filtered.AsQueryable();
+    }
+
+    private string ExtractModelName(string workItemId)
+    {
+        // Extract model name from workitem ID if available
+        // For now, return a shortened version
+        return workItemId.Length > 20 ? workItemId.Substring(0, 20) + "..." : workItemId;
+    }
+
+    private Appearance GetStatusAppearance(string status)
+    {
+        return status.ToLower() switch
+        {
+            "success" => Appearance.Accent,
+            "published" => Appearance.Accent,
+            "publishing model" => Appearance.Neutral,
+            "pending" => Appearance.Neutral,
+            "inprogress" => Appearance.Neutral,
+            "queued" => Appearance.Neutral,
+            _ when status.Contains("failed") => Appearance.Accent,
+            "cancelled" => Appearance.Neutral,
+            _ => Appearance.Neutral
+        };
+    }
+
+    private string GetStatusColor(string status)
+    {
+        return status.ToLower() switch
+        {
+            "success" => "#107c10",
+            "published" => "#107c10",
+            "publishing model" => "#0078d4",
+            "pending" => "#0078d4",
+            "inprogress" => "#0078d4",
+            "queued" => "#0078d4",
+            _ when status.Contains("failed") => "#d83b01",
+            "cancelled" => "#ca5010",
+            _ => "#8a8886"
+        };
+    }
+
+    private string GetExecutionTime(WorkItemInfo workItem)
+    {
+        var duration = workItem.LastUpdated - workItem.SubmittedAt;
+        
+        if (duration.TotalHours >= 1)
+        {
+            return $"{duration.Hours}h {duration.Minutes}m";
+        }
+        else if (duration.TotalMinutes >= 1)
+        {
+            return $"{duration.Minutes}m {duration.Seconds}s";
+        }
+        else
+        {
+            return $"{duration.Seconds}s";
+        }
+    }
+
+    public void Dispose()
+    {
+        _disposed = true;
+        _pollingTimer?.Dispose();
+    }
+
+    private class WorkItemInfo
+    {
+        public string WorkItemId { get; set; } = string.Empty;
+        public string ModelName { get; set; } = string.Empty;
+        public string ProjectName { get; set; } = string.Empty;
+        public string UserName { get; set; } = string.Empty;
+        public string Status { get; set; } = string.Empty;
+        public string? ReportUrl { get; set; }
+        public List<LinkChangeDetail> Changes { get; set; } = new();
+        public DateTime CreatedAt { get; set; }
+        public DateTime SubmittedAt { get; set; }
+        public DateTime LastUpdated { get; set; }
+    }
+}

@@ -1,0 +1,1228 @@
+@page "/{ProjectId}/create-models"
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+@inject RevitAutomationTools RevitAutomationTools
+@inject ICreationJobStatusService CreationJobStatusService
+@inject INamingStandardsService NamingStandardsService
+@inject NavigationManager NavigationManager
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Create Models - @_projectName</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+        <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/create-models-projects"))">
+        Back to Projects
+    </FluentButton>
+    <div>
+        <h1>Create Revit Models</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+        @if (!string.IsNullOrEmpty(_selectedFolderName))
+        {
+            <FluentBadge Appearance="Appearance.Accent" Style="margin-top: 8px;">
+                Target Folder: @_selectedFolderName
+            </FluentBadge>
+        }
+    </div>
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.History())"
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/model-creation-tracking"))">
+            Tracking
+            @if (_activeWorkItemsCount > 0)
+            {
+                <FluentBadge Appearance="Appearance.Accent" Style="margin-left: 8px;">
+                    @_activeWorkItemsCount
+                </FluentBadge>
+            }
+        </FluentButton>
+    </FluentStack>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+    }
+
+    <FluentStack Orientation="Orientation.Horizontal">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Width="100%">
+         <h3>Folder Explorer</h3>
+        <FolderExplorer ProjectId="@ProjectId"
+                        HubId="@_hubId"
+                        OnFolderSelectionChanged="@OnFolderSelected" />
+        </FluentStack>
+
+        @if (!string.IsNullOrEmpty(_selectedFolderId))
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="15">
+                <h3>Models to Create</h3>
+                
+                <!-- Naming Standard Card -->
+                @if (_folderNamingStandard != null)
+                {
+                    <FluentCard Style="padding: 16px; background: var(--accent-fill-rest); color: white;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Value="@(new Icons.Regular.Size20.DocumentText())" Color="Color.Fill" />
+                                <strong>Naming Standard Found: @_folderNamingStandard.Name</strong>
+                            </FluentStack>
+                            <div style="font-size: 13px;">
+                                Template: <span style="font-family: monospace;">@_folderNamingStandard.Template</span>
+                            </div>
+                            <FluentButton Appearance="Appearance.Outline"
+                                          IconStart="@(new Icons.Regular.Size20.Add())"
+                                          OnClick="ShowNamingStandardDialog"
+                                          Style="color: white; border-color: white;">
+                                Generate Model Names
+                            </FluentButton>
+                        </FluentStack>
+                    </FluentCard>
+                }
+                
+                <!-- Template Selection Section -->
+                <FluentCard Style="padding: 16px; background: var(--neutral-layer-2);">
+                        <strong>Template Settings</strong>
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" VerticalAlignment="VerticalAlignment.Center">
+
+                        <p style="margin: 4px 0 0 0; color: var(--neutral-foreground-hint); font-size: 13px;">
+                            @if (string.IsNullOrEmpty(_selectedTemplateName))
+                            {
+                                <span>No template selected</span>
+                            }
+                            else
+                            {
+                                <span>Selected: @_selectedTemplateName</span>
+                            }
+                        </p>
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size20.FolderOpen())"
+                                      OnClick="ShowTemplateSelector">
+                            Select Template
+                        </FluentButton>
+                        <FluentCheckbox @bind-Value="_enableWorksharing" Label="Enable Worksharing" />
+                    </FluentStack>
+                </FluentCard>
+                <FluentStack Orientation="Orientation.Horizontal">
+                    <FluentButton Appearance="Appearance.Neutral"
+                                  IconStart="@(new Icons.Regular.Size20.Add())"
+                                  OnClick="ShowAddModelDialog">
+                        Add Model
+                    </FluentButton>
+                    
+                    @if (HasActiveWorkItems())
+                    {
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size20.Clock())"
+                                      OnClick="ShowConfirmationDialog"
+                                      Disabled="true">
+                            Processing...
+                        </FluentButton>
+                    }
+                    else
+                    {
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size20.Play())"
+                                      OnClick="ShowConfirmationDialog"
+                                      Disabled="@(!CanCreateModels())">
+                            Create All Models (@_modelsToCreate.Count)
+                        </FluentButton>
+                    }
+                </FluentStack>
+
+                @if (_modelsToCreate.Any())
+                {
+                    <FluentDataGrid Items="@_modelsToCreate.AsQueryable()"
+                                    ResizableColumns="false"
+                                    RowSize="DataGridRowSize.Large"
+                                    Style="width: 100%;">
+                        <PropertyColumn Property="@(m => m.ModelName)" Sortable="true" Title="Model Name" />
+                        <TemplateColumn Title="Actions">
+                            <FluentButton Appearance="Appearance.Lightweight"
+                                          IconStart="@(new Icons.Regular.Size16.Delete())"
+                                          OnClick="@(() => RemoveModel(context))"
+                                          Title="Remove">
+                                Remove
+                            </FluentButton>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+
+                }
+                else
+                {
+                    <FluentMessageBar Intent="MessageIntent.Info">
+                        No models added yet. Click "Add Model" to start.
+                    </FluentMessageBar>
+                }
+            </FluentStack>
+        }
+    </FluentStack>
+</FluentStack>
+
+
+
+<!-- Add Model Dialog -->
+<FluentDialog @bind-Hidden="@_hideAddModelDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Add New Model</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentTextField @bind-Value="_newModelName"
+                         Label="Model Name"
+                         Placeholder="Enter model name (e.g., Building-A)"
+                         Style="width: 100%;" />
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Checkmark())"
+                      OnClick="AddModel">
+            OK
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      OnClick="CancelAddModel">
+            Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Template Selector Dialog -->
+<FluentDialog @bind-Hidden="@_hideTemplateSelectorDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 600px;">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Select Template</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_isLoadingTemplates)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 20px;">
+                <FluentProgressRing />
+                <span>Loading templates...</span>
+            </FluentStack>
+        }
+        else if (_availableTemplates != null && _availableTemplates.Any())
+        {
+            <div style="max-height: 400px; overflow-y: auto;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                    @foreach (var template in _availableTemplates)
+                    {
+                        <FluentCard Style="cursor: pointer; padding: 12px;"
+                                    @onclick="@(() => SelectTemplate(template))">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Value="@(new Icons.Regular.Size24.Document())" Color="Color.Accent" />
+                                <div>
+                                    <strong>@template.ModelName</strong>
+                                </div>
+                            </FluentStack>
+                        </FluentCard>
+                    }
+                </FluentStack>
+            </div>
+        }
+        else
+        {
+            <FluentMessageBar Intent="MessageIntent.Warning">
+                No Revit models found in this project to use as templates.
+            </FluentMessageBar>
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral" OnClick="CancelTemplateSelection">
+            Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Confirmation Dialog -->
+<FluentDialog @bind-Hidden="@_hideConfirmDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 600px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Warning())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.PaneHeader">Confirm Model Creation</FluentLabel>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            <p>You are about to create the following models:</p>
+
+            <FluentCard Style="padding: 12px; background: var(--neutral-layer-2);">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                    <div>
+                        <strong>Number of models:</strong>
+                        <FluentBadge Appearance="Appearance.Accent" Style="margin-left: 8px;">
+                            @_modelsToCreate.Count
+                        </FluentBadge>
+                    </div>
+
+                    <div>
+                        <strong>Target folder:</strong>
+                        <div style="color: var(--neutral-foreground-hint); margin-left: 4px;">
+                            @_selectedFolderName
+                        </div>
+                    </div>
+
+                    <div>
+                        <strong>Template:</strong>
+                        <div style="color: var(--neutral-foreground-hint); margin-left: 4px;">
+                            @_selectedTemplateName
+                        </div>
+                    </div>
+
+                    <div>
+                        <strong>Worksharing:</strong>
+                        @if (_enableWorksharing)
+                        {
+                            <FluentBadge Appearance="Appearance.Accent" Style="margin-left: 8px;">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Checkmark())" /> Enabled
+                            </FluentBadge>
+                        }
+                        else
+                        {
+                            <FluentBadge Appearance="Appearance.Neutral" Style="margin-left: 8px;">
+                                <FluentIcon Value="@(new Icons.Regular.Size16.Dismiss())" /> Disabled
+                            </FluentBadge>
+                        }
+                    </div>
+                </FluentStack>
+            </FluentCard>
+
+            <p style="margin-top: 10px;"><strong>Do you want to proceed?</strong></p>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Checkmark())"
+                      OnClick="ConfirmCreateModels">
+            Confirm
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      OnClick="CancelCreateModels">
+            Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Naming Standard Generator Dialog -->
+<FluentDialog @bind-Hidden="@_hideNamingStandardDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 800px; max-width: 90vw;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+            <FluentIcon Value="@(new Icons.Regular.Size24.DocumentText())" Color="Color.Accent" />
+            <div>
+                <FluentLabel Typo="Typography.PaneHeader">Generate Model Names</FluentLabel>
+                <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-top: 2px;">
+                    Using: @_folderNamingStandard?.Name
+                </div>
+            </div>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_folderNamingStandard != null && _folderNamingStandard.Definition != null)
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="20" Style="max-height: 70vh; overflow-y: auto;">
+                <!-- Standard Information -->
+                <FluentCard Style="padding: 16px; background: var(--accent-fill-rest); color: white;">
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                        <div style="font-weight: 600; font-size: 15px;">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.Info())" Color="Color.Fill" Style="margin-right: 4px;" />
+                            Naming Pattern
+                        </div>
+                        <div style="font-family: monospace; font-size: 14px; background: rgba(0,0,0,0.2); padding: 8px; border-radius: 4px;">
+                            @_folderNamingStandard.Template
+                        </div>
+                        <div style="font-size: 12px; opacity: 0.9;">
+                            Delimiter: "<strong>@(_folderNamingStandard.Definition.Delimiter ?? "-")</strong>"
+                            @if (!string.IsNullOrEmpty(_folderNamingStandard.Description))
+                            {
+                                <span> • @_folderNamingStandard.Description</span>
+                            }
+                        </div>
+                    </FluentStack>
+                </FluentCard>
+
+                <!-- Fields -->
+                @if (_folderNamingStandard.Definition.Fields != null)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                        @foreach (var field in _folderNamingStandard.Definition.Fields.OrderBy(f => f.AttributeId))
+                        {
+                                    <!-- Field Header -->
+                                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                                        <strong style="font-size: 14px;">@field.Name</strong>
+                                        @if (!field.Optional)
+                                        {
+                                            <FluentBadge Appearance="Appearance.Lightweight" BackgroundColor="#d83b01" Color="white" Style="font-size: 10px;">
+                                                Required
+                                            </FluentBadge>
+                                        }
+                                        @if (field.MaxLength.HasValue || field.MinLength.HasValue)
+                                        {
+                                            <FluentBadge Appearance="Appearance.Neutral" Style="font-size: 10px;">
+                                                Length: @(field.MinLength ?? 0)-@(field.MaxLength ?? 0)
+                                            </FluentBadge>
+                                        }
+                                    </FluentStack>
+
+                                    <!-- Field Description -->
+                                    @if (!string.IsNullOrEmpty(field.Description))
+                                    {
+                                        <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 4px;">
+                                            @field.Description
+                                        </div>
+                                    }
+
+                                    <!-- Input Field -->
+                                    @if (field.Options != null && field.Options.Any())
+                                    {
+                                        <!-- Dropdown for fields with options -->
+                                        <FluentSelect TOption="NamingStandardFieldOption"
+                                                    Items="@field.Options"
+                                                    Required="@(!field.Optional)"
+                                                    Placeholder="@GetFieldPlaceholder(field)"
+                                                    OptionValue="@(o => o.Value ?? string.Empty)"
+                                                    OptionText="@(o => GetOptionText(o))"
+                                                    OptionTitle="@(o => o.Description)"
+                                                    Value="@GetFieldValue(field.Name ?? string.Empty)"
+                                                    ValueChanged="@((string value) => SetFieldValue(field.Name ?? string.Empty, value))"
+                                                    Height="250px"
+                                                    Width="100%">
+                                        </FluentSelect>
+                                    }
+                                    else
+                                    {
+                                        <!-- Text field for fields without predefined options -->
+                                        @if (field.Type?.Equals("NUMERIC", StringComparison.OrdinalIgnoreCase) == true)
+                                        {
+                                            <!-- Numeric field - only numbers allowed -->
+                                            <FluentTextField Value="@GetFieldValue(field.Name ?? string.Empty)"
+                                                           ValueChanged="@((string value) => SetNumericFieldValue(field.Name ?? string.Empty, value))"
+                                                           Required="@(!field.Optional)"
+                                                           Maxlength="@field.MaxLength"
+                                                           Placeholder="@GetFieldPlaceholder(field)"
+                                                           TextFieldType="TextFieldType.Number"
+                                                           Style="width: 100%;">
+                                                <FluentIcon Value="@(new Icons.Regular.Size16.NumberSymbol())" Slot="start" />
+                                            </FluentTextField>
+                                        }
+                                        else
+                                        {
+                                            <!-- Alphanumeric field - all characters allowed -->
+                                            <FluentTextField Value="@GetFieldValue(field.Name ?? string.Empty)"
+                                                           ValueChanged="@((string value) => SetFieldValue(field.Name ?? string.Empty, value))"
+                                                           Required="@(!field.Optional)"
+                                                           Maxlength="@field.MaxLength"
+                                                           Placeholder="@GetFieldPlaceholder(field)"
+                                                           Style="width: 100%;">
+                                                <FluentIcon Value="@GetFieldIcon(field.Type)" Slot="start" />
+                                            </FluentTextField>
+                                        }
+                                    }
+                        }
+                    </FluentStack>
+                }
+
+                <!-- Preview -->
+                @if (_generatedNamesPreview.Any())
+                {
+                    <FluentCard Style="padding: 16px; background: #f0f9ff; border: 1px solid #0078d4;">
+                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                            <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                                <FluentIcon Value="@(new Icons.Regular.Size20.CheckmarkCircle())" Color="Color.Success" />
+                                <strong style="font-size: 15px; color: #107c10;">
+                                    Preview: @_generatedNamesPreview.Count Model@(_generatedNamesPreview.Count == 1 ? "" : "s")
+                                </strong>
+                            </FluentStack>
+                            <div style="max-height: 200px; overflow-y: auto; background: white; padding: 12px; border-radius: 4px; border: 1px solid var(--neutral-stroke-layer-rest);">
+                                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                                    @foreach (var name in _generatedNamesPreview)
+                                    {
+                                        <div style="font-family: monospace; padding: 6px; display: flex; align-items: center; gap: 8px;">
+                                            <FluentIcon Value="@(new Icons.Regular.Size16.CheckmarkCircle())" Color="Color.Success" />
+                                            <span style="color: var(--neutral-foreground-rest);">@name</span>
+                                        </div>
+                                    }
+                                </FluentStack>
+                            </div>
+                        </FluentStack>
+                    </FluentCard>
+                }
+            </FluentStack>
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Eye())"
+                      OnClick="PreviewGeneratedNames"
+                      Title="Generate preview of model name">
+            Preview Name
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Add())"
+                      OnClick="AddGeneratedModels"
+                      Disabled="@(!_generatedNamesPreview.Any())"
+                      Title="Add generated model to the creation list">
+            Add Model
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      OnClick="CloseNamingStandardDialog">
+            Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private string? _projectName;
+    private string? _hubId;
+    private string? _region;
+    private Guid _accountId;
+    private Guid _projectIdGuid;
+    private Guid _projectGuid;
+    private string? _errorMessage;
+    private bool _isLoadingTemplates = false;
+
+    // Folder selection
+    private string? _selectedFolderId;
+    private string? _selectedFolderName;
+
+    // Model creation
+    private List<ModelToCreate> _modelsToCreate = new();
+    private bool _hideAddModelDialog = true;
+    private string _newModelName = string.Empty;
+
+    // Template selection (single template for all models)
+    private bool _hideTemplateSelectorDialog = true;
+    private bool _hideConfirmDialog = true;
+    private string? _selectedTemplateName;
+    private string? _selectedTemplateItemId;
+    private string? _selectedTemplateVersionId;
+    private Guid _selectedTemplateModelGuid;
+    private bool _enableWorksharing = true;
+    private List<TemplateInfo>? _availableTemplates;
+    
+    // Workitem tracking
+    private int _activeWorkItemsCount = 0;
+    private System.Threading.Timer? _workItemPollingTimer;
+
+    // Naming standards
+    private NamingStandard? _folderNamingStandard;
+    private bool _hideNamingStandardDialog = true;
+    private Dictionary<string, string> _namingStandardFieldValues = new();
+    private List<string> _generatedNamesPreview = new();
+    
+    // Helper to safely get/set dictionary values
+    private string GetFieldValue(string fieldName)
+    {
+        if (string.IsNullOrEmpty(fieldName))
+            return string.Empty;
+            
+        if (_namingStandardFieldValues.TryGetValue(fieldName, out var value))
+            return value;
+            
+        return string.Empty;
+    }
+    
+    private void SetFieldValue(string fieldName, string value)
+    {
+        if (string.IsNullOrEmpty(fieldName))
+            return;
+            
+        _namingStandardFieldValues[fieldName] = value;
+    }
+
+    private void SetNumericFieldValue(string fieldName, string value)
+    {
+        if (string.IsNullOrEmpty(fieldName))
+            return;
+
+        // Strip any non-numeric characters
+        var numericValue = new string(value.Where(char.IsDigit).ToArray());
+        
+        _namingStandardFieldValues[fieldName] = numericValue;
+        
+        // Force UI update to show cleaned value
+        StateHasChanged();
+    }
+
+    private void HandleNumericInput(ChangeEventArgs e, string fieldName)
+    {
+        if (string.IsNullOrEmpty(fieldName))
+            return;
+
+        var inputValue = e.Value?.ToString() ?? string.Empty;
+        
+        // Filter out any non-digit characters immediately
+        var numericValue = new string(inputValue.Where(char.IsDigit).ToArray());
+        
+        // Update the field value with only numeric characters
+        _namingStandardFieldValues[fieldName] = numericValue;
+        
+        StateHasChanged();
+    }
+
+    private class ModelToCreate
+    {
+        public string ModelName { get; set; } = string.Empty;
+    }
+
+    private class TemplateInfo
+    {
+        public string ModelName { get; set; } = string.Empty;
+        public string ItemId { get; set; } = string.Empty;
+        public string VersionId { get; set; } = string.Empty;
+        public Guid ModelGuid { get; set; }
+        public string? ProjectGuid { get; set; }
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            return;
+        }
+
+        await LoadProjectDetails();
+        
+        // Start polling for active workitem counts
+        _workItemPollingTimer = new System.Threading.Timer(async _ =>
+        {
+            await CheckActiveWorkItems();
+        }, null, TimeSpan.FromSeconds(2), TimeSpan.FromSeconds(5));
+    }
+
+    public void Dispose()
+    {
+        _workItemPollingTimer?.Dispose();
+    }
+
+    private async Task CheckActiveWorkItems()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(ProjectId))
+                return;
+
+            // Only count batch/creation workitems for this page
+            var workItems = CreationJobStatusService.GetJobsByProject(ProjectId);
+            
+            // Count active workitems (pending or in progress)
+            _activeWorkItemsCount = workItems.Count(w =>
+                w.Status == "pending" ||
+                w.Status == "inprogress" ||
+                w.Status == "queued" ||
+                w.Status == "publishing model");
+
+            await InvokeAsync(StateHasChanged);
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking active workitems: {ex.Message}");
+        }
+    }
+
+    private bool HasActiveWorkItems()
+    {
+        if (string.IsNullOrEmpty(ProjectId))
+            return false;
+
+        // Only check batch/creation workitems for this page
+        var workItems = CreationJobStatusService.GetJobsByProject(ProjectId);
+        return workItems.Any(w =>
+            w.Status == "pending" ||
+            w.Status == "inprogress" ||
+            w.Status == "queued" ||
+            w.Status == "publishing model");
+    }
+
+    private async Task OnFolderSelected(FolderExplorer.FolderSelectedEventArgs args)
+    {
+        _selectedFolderId = args.FolderId;
+        _selectedFolderName = args.FolderName;
+        
+        // Check for naming standard applied to this folder
+        await CheckFolderNamingStandard();
+        
+        StateHasChanged();
+    }
+
+    private async Task CheckFolderNamingStandard()
+    {
+        try
+        {
+            if (string.IsNullOrEmpty(_selectedFolderId) || string.IsNullOrEmpty(ProjectId))
+                return;
+
+            _folderNamingStandard = await NamingStandardsService.GetFolderNamingStandardAsync(
+                UserSession.AccessToken!,
+                ProjectId,
+                _selectedFolderId);
+
+            if (_folderNamingStandard != null)
+            {
+                Console.WriteLine($"Found naming standard: {_folderNamingStandard.Name} for folder {_selectedFolderName}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error checking folder naming standard: {ex.Message}");
+        }
+    }
+
+    private async Task LoadProjectDetails()
+    {
+        try
+        {
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
+
+            if (hubs.Data != null)
+            {
+                foreach (var hub in hubs.Data)
+                {
+                    var hubId = hub.Id ?? string.Empty;
+
+                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    // Extract Account ID from Hub ID (format: b.{guid})
+                    if (Guid.TryParse(hubId.Substring(2), out var accountIdGuid))
+                    {
+                        _accountId = accountIdGuid;
+                    }
+
+                    try
+                    {
+                        var projects = await DataManagementClient.GetHubProjectsAsync(
+                            accessToken: UserSession.AccessToken,
+                            hubId: hubId);
+
+                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                        if (project != null)
+                        {
+                            _projectName = project.Attributes?.Name ?? "Unknown Project";
+                            _hubId = hubId;
+                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
+
+                            // Extract Project ID GUID from ProjectId (format: b.{projectGuid})
+                            if (!string.IsNullOrEmpty(ProjectId) && ProjectId.StartsWith("b."))
+                            {
+                                if (Guid.TryParse(ProjectId.Substring(2), out var projectIdGuid))
+                                {
+                                    _projectIdGuid = projectIdGuid;
+                                }
+                            }
+
+                            // ProjectGuid will be obtained from the selected template
+                            // No need to search for it here
+
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading project details: {ex.Message}";
+        }
+    }
+
+    private void ShowAddModelDialog()
+    {
+        _newModelName = string.Empty;
+        _hideAddModelDialog = false;
+        StateHasChanged();
+    }
+
+    private void AddModel()
+    {
+        if (string.IsNullOrWhiteSpace(_newModelName))
+            return;
+
+        // Add .rvt extension if not present
+        var modelName = _newModelName.Trim();
+        if (!modelName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+        {
+            modelName += ".rvt";
+        }
+
+        _modelsToCreate.Add(new ModelToCreate
+        {
+            ModelName = modelName
+        });
+
+        _hideAddModelDialog = true;
+        _newModelName = string.Empty;
+        StateHasChanged();
+    }
+
+    private void CancelAddModel()
+    {
+        _hideAddModelDialog = true;
+        _newModelName = string.Empty;
+        StateHasChanged();
+    }
+
+    private void RemoveModel(ModelToCreate model)
+    {
+        _modelsToCreate.Remove(model);
+        StateHasChanged();
+    }
+
+    private async Task ShowTemplateSelector()
+    {
+        await LoadAvailableTemplates();
+        _hideTemplateSelectorDialog = false;
+        StateHasChanged();
+    }
+
+    private async Task LoadAvailableTemplates()
+    {
+        try
+        {
+            _isLoadingTemplates = true;
+            _availableTemplates = new List<TemplateInfo>();
+            StateHasChanged();
+
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(
+                accessToken: UserSession.AccessToken,
+                hubId: _hubId!,
+                projectId: ProjectId!);
+
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    await FindRevitModels(folder.Id ?? string.Empty);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading templates: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingTemplates = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FindRevitModels(string folderId)
+    {
+        try
+        {
+            var contents = await DataManagementClient.GetFolderContentsAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: ProjectId!,
+                folderId: folderId);
+
+            if (contents.Data != null)
+            {
+                // Create a dictionary of version details from the included section for fast lookup
+                var versionDetailsDict = new Dictionary<string, dynamic>();
+
+                if (contents.Included != null)
+                {
+                    foreach (var includedItem in contents.Included)
+                    {
+                        if (includedItem is VersionData versionData && versionData.Id != null)
+                        {
+                            versionDetailsDict[versionData.Id] = versionData;
+                        }
+                    }
+                }
+
+                foreach (var item in contents.Data)
+                {
+                    if (item is FolderData folderData)
+                    {
+                        await FindRevitModels(folderData.Id ?? string.Empty);
+                    }
+                    else if (item is ItemData itemData)
+                    {
+                        var displayName = itemData.Attributes?.DisplayName ?? "Unknown";
+
+                        if (displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                        {
+                            var versionId = itemData.Relationships?.Tip?.Data?.Id ?? string.Empty;
+
+                            if (!string.IsNullOrEmpty(versionId) && versionDetailsDict.TryGetValue(versionId, out var versionData))
+                            {
+                                // Check if it's a valid template using the included version data
+                                var (isValid, modelGuid, projectGuid) = IsValidTemplateFromVersionData(versionData as VersionData, versionId);
+
+                                if (isValid)
+                                {
+                                    _availableTemplates!.Add(new TemplateInfo
+                                    {
+                                        ModelName = displayName,
+                                        ItemId = itemData.Id ?? string.Empty,
+                                        VersionId = versionId,
+                                        ModelGuid = modelGuid,
+                                        ProjectGuid = projectGuid
+                                    });
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finding models in folder {folderId}: {ex.Message}");
+        }
+    }
+
+    private (bool isValid, Guid modelGuid, string? projectGuid) IsValidTemplateFromVersionData(VersionData? versionData, string versionId)
+    {
+        if (versionData?.Attributes?.Extension == null)
+        {
+            Console.WriteLine($"Version {versionId} has no extension data");
+            return (false, Guid.Empty, null);
+        }
+
+        var extension = versionData.Attributes.Extension;
+
+        // Check if it's a C4R Model (cloud model)
+        var extensionType = extension.Type?.ToString() ?? string.Empty;
+        if (!extensionType.Equals("versions:autodesk.bim360:C4RModel", StringComparison.OrdinalIgnoreCase))
+        {
+            Console.WriteLine($"Version {versionId} is not a C4R Model. Type: {extensionType}");
+            return (false, Guid.Empty, null);
+        }
+
+        // Check if extension data exists
+        if (extension.Data == null)
+        {
+            Console.WriteLine($"Version {versionId} has no extension.data");
+            return (false, Guid.Empty, null);
+        }
+
+        // Check if it's single-user (not workshared)
+        if (extension.Data.TryGetValue("modelType", out var modelTypeObj))
+        {
+            var modelType = modelTypeObj?.ToString() ?? string.Empty;
+
+            if (!modelType.Equals("singleuser", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.WriteLine($"Version {versionId} is not single-user. ModelType: {modelType}");
+                return (false, Guid.Empty, null);
+            }
+        }
+        else
+        {
+            Console.WriteLine($"Version {versionId} has no modelType property");
+            return (false, Guid.Empty, null);
+        }
+
+        // Extract ModelGuid
+        Guid modelGuid = Guid.Empty;
+        if (extension.Data.TryGetValue("modelGuid", out var modelGuidObj))
+        {
+            if (Guid.TryParse(modelGuidObj?.ToString(), out var parsedGuid))
+            {
+                modelGuid = parsedGuid;
+            }
+        }
+
+        // Extract ProjectGuid
+        string? projectGuid = null;
+        if (extension.Data.TryGetValue("projectGuid", out var projectGuidObj))
+        {
+            projectGuid = projectGuidObj?.ToString();
+        }
+
+        Console.WriteLine($"Version {versionId} is a valid single-user template");
+        Console.WriteLine($"  ModelGuid: {modelGuid}");
+        Console.WriteLine($"  ProjectGuid: {projectGuid}");
+        
+        return (true, modelGuid, projectGuid);
+    }
+
+    private void SelectTemplate(TemplateInfo template)
+    {
+        _selectedTemplateName = template.ModelName;
+        _selectedTemplateItemId = template.ItemId;
+        _selectedTemplateVersionId = template.VersionId;
+        _selectedTemplateModelGuid = template.ModelGuid;
+        
+        // Get ProjectGuid from template
+        if (!string.IsNullOrEmpty(template.ProjectGuid) && Guid.TryParse(template.ProjectGuid, out var projectGuid))
+        {
+            _projectGuid = projectGuid;
+            Console.WriteLine($"ProjectGuid set from template: {_projectGuid}");
+        }
+
+        _hideTemplateSelectorDialog = true;
+        StateHasChanged();
+    }
+
+    private void CancelTemplateSelection()
+    {
+        _hideTemplateSelectorDialog = true;
+        StateHasChanged();
+    }
+
+    private bool CanCreateModels()
+    {
+        return _modelsToCreate.Any() &&
+               !string.IsNullOrEmpty(_selectedTemplateItemId);
+    }
+
+    private void ShowConfirmationDialog()
+    {
+        _hideConfirmDialog = false;
+        StateHasChanged();
+    }
+
+    private void CancelCreateModels()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmCreateModels()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+        await CreateAllModels();
+    }
+
+    private async Task CreateAllModels()
+    {
+        try
+        {
+            _errorMessage = null;
+
+            if (_modelsToCreate == null || !_modelsToCreate.Any())
+            {
+                _errorMessage = "No models to create";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_selectedTemplateItemId) || _selectedTemplateModelGuid == Guid.Empty)
+            {
+                _errorMessage = "Please select a template";
+                return;
+            }
+
+            if (string.IsNullOrEmpty(_selectedFolderId))
+            {
+                _errorMessage = "Please select a target folder";
+                return;
+            }
+
+            var successCount = 0;
+            var failedModels = new List<string>();
+
+            // Submit a separate workitem for each model - each is completely independent
+            foreach (var model in _modelsToCreate)
+            {
+                var result = await RevitAutomationTools.CreateModel(
+                    _region ?? "US",
+                    _projectGuid.ToString(),
+                    _accountId,
+                    _projectIdGuid,
+                    _selectedFolderId,
+                    _selectedTemplateName ?? string.Empty,
+                    _selectedTemplateModelGuid.ToString(),
+                    _enableWorksharing,
+                    model.ModelName);
+
+                if (result.IsSuccess)
+                {
+                    // Store individual creation job details - no batch grouping
+                    CreationJobStatusService.StoreCreationJobDetails(
+                        workItemId: result.WorkItemId!,
+                        projectId: ProjectId!,
+                        projectName: _projectName ?? "Unknown Project",
+                        userName: UserSession.UserName ?? UserSession.UserEmail ?? "Unknown User",
+                        modelName: model.ModelName);
+
+                    // Update the initial status
+                    CreationJobStatusService.UpdateStatus(
+                        workItemId: result.WorkItemId!,
+                        status: result.Status ?? "pending",
+                        reportUrl: null);
+
+                    successCount++;
+                }
+                else
+                {
+                    failedModels.Add(model.ModelName);
+                }
+            }
+
+            if (successCount > 0)
+            {
+                // Clear the models list after successful submission
+                _modelsToCreate.Clear();
+
+                if (failedModels.Any())
+                {
+                    _errorMessage = $"Successfully submitted {successCount} workitem(s). Failed: {string.Join(", ", failedModels)}";
+                }
+
+                // Navigate to model creation tracking page to show the jobs
+                NavigationManager.NavigateTo($"/{ProjectId}/model-creation-tracking");
+            }
+            else
+            {
+                _errorMessage = $"Failed to create workitems for all models: {string.Join(", ", failedModels)}";
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error creating models: {ex.Message}";
+        }
+    }
+
+    // Naming Standard Dialog Methods
+    private void ShowNamingStandardDialog()
+    {
+        if (_folderNamingStandard?.Definition?.Fields == null)
+        {
+            Console.WriteLine("Cannot show naming standard dialog: no fields defined");
+            return;
+        }
+
+        _namingStandardFieldValues.Clear();
+        _generatedNamesPreview.Clear();
+
+        // Initialize field values with defaults - ensure ALL fields have a key
+        foreach (var field in _folderNamingStandard.Definition.Fields)
+        {
+            var fieldKey = field.Name ?? string.Empty;
+            if (!string.IsNullOrEmpty(fieldKey))
+            {
+                _namingStandardFieldValues[fieldKey] = field.DefaultValue ?? string.Empty;
+                Console.WriteLine($"Initialized field '{fieldKey}' with default value: '{field.DefaultValue ?? "(empty)"}'");
+            }
+        }
+
+        Console.WriteLine($"Naming standard dialog initialized with {_namingStandardFieldValues.Count} fields");
+        
+        _hideNamingStandardDialog = false;
+        StateHasChanged();
+    }
+
+    private void CloseNamingStandardDialog()
+    {
+        _hideNamingStandardDialog = true;
+        _generatedNamesPreview.Clear();
+        // Don't clear _namingStandardFieldValues here to preserve values if user reopens
+        StateHasChanged();
+    }
+
+    private void PreviewGeneratedNames()
+    {
+        if (_folderNamingStandard == null) return;
+
+        _generatedNamesPreview.Clear();
+
+        // Generate model name from single field values
+        var modelName = NamingStandardsService.GenerateModelName(_folderNamingStandard, _namingStandardFieldValues);
+        if (!string.IsNullOrEmpty(modelName))
+        {
+            _generatedNamesPreview.Add(modelName);
+        }
+
+        StateHasChanged();
+    }
+
+    private void AddGeneratedModels()
+    {
+        foreach (var modelName in _generatedNamesPreview)
+        {
+            // Check if model with same name already exists
+            if (!_modelsToCreate.Any(m => m.ModelName.Equals(modelName, StringComparison.OrdinalIgnoreCase)))
+            {
+                _modelsToCreate.Add(new ModelToCreate { ModelName = modelName });
+            }
+        }
+
+        _hideNamingStandardDialog = true;
+        _generatedNamesPreview.Clear();
+        StateHasChanged();
+    }
+
+    // Helper methods for naming standard dialog
+    private string GetFieldPlaceholder(NamingStandardField field)
+    {
+        if (!string.IsNullOrEmpty(field.DefaultValue))
+        {
+            return $"Default: {field.DefaultValue}";
+        }
+
+        if (field.Options != null && field.Options.Any())
+        {
+            return field.Optional ? "Select an option" : "Select an option (required)";
+        }
+
+        return "Enter a value";
+    }
+
+    private string GetOptionText(NamingStandardFieldOption option)
+    {
+        if (string.IsNullOrEmpty(option.Description))
+        {
+            return option.Value ?? string.Empty;
+        }
+
+        return $"{option.Value} - {option.Description}";
+    }
+
+    private Icon GetFieldIcon(string? fieldType)
+    {
+        return fieldType?.ToUpperInvariant() switch
+        {
+            "ALPHANUMERIC" => new Icons.Regular.Size16.TextDescription(),
+            "NUMERIC" => new Icons.Regular.Size16.NumberSymbol(),
+            "ARRAY" => new Icons.Regular.Size16.List(),
+            "CLASSIFICATION" => new Icons.Regular.Size16.Tag(),
+            _ => new Icons.Regular.Size16.TextDescription()
+        };
+    }
+}
+
+

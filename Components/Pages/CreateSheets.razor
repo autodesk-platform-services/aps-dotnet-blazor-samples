@@ -1,0 +1,588 @@
+@page "/{ProjectId}/create-sheets"
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+@inject NavigationManager NavigationManager
+@inject RevitAutomationTools RevitAutomationTools
+@inject ISheetCreationJobStatusService SheetCreationJobStatusService
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Create Sheets - @_projectName</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/create-sheets-projects"))">
+        Back to Projects
+    </FluentButton>
+
+    <div>
+        <h1>Create Sheets</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.History())"
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/sheet-creation-tracking"))">
+            Tracking
+        </FluentButton>
+    </FluentStack>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+    }
+
+    <FluentStack Orientation="Orientation.Vertical" HorizontalGap="20" VerticalAlignment="VerticalAlignment.Top">
+        <!-- Revit Model Selector -->
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Style="min-width: 400px;">
+            <h3>Select Revit Model</h3>
+
+            @if (_isLoadingModels)
+            {
+                <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 20px;">
+                    <FluentProgressRing />
+                    <span>Loading Revit models...</span>
+                </FluentStack>
+            }
+            else if (_availableModels != null && _availableModels.Any())
+            {
+                <FluentSelect TOption="RevitModel"
+                              Items="@_availableModels"
+                              OptionValue="@(m => m.ItemId)"
+                              OptionText="@(m => m.ModelName)"
+                              @bind-Value="@_selectedModelItemId"
+                              Placeholder="Select a Revit model..."
+                              Width="400px">
+                </FluentSelect>
+
+                @if (!string.IsNullOrEmpty(_selectedModelItemId))
+                {
+                    <div style="margin-top: 12px; padding: 12px; background: var(--accent-fill-rest); color: white; border-radius: 4px;">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.Document())" Color="Color.Fill" />
+                            <strong>Selected: @_selectedModel?.ModelName</strong>
+                        </FluentStack>
+                    </div>
+                }
+            }
+            else
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning">
+                    No Revit models found in this project.
+                </FluentMessageBar>
+            }
+        </FluentStack>
+
+        <!-- Sheets List -->
+        @if (!string.IsNullOrEmpty(_selectedModelItemId))
+        {
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Style="flex: 1;">
+                <h3>Sheets to Create</h3>
+
+                <FluentTextField @bind-Value="_titleBlockName"
+                                 Label="Title Block Template Name"
+                                 Placeholder="e.g. E1 30x42 Horizontal (leave empty for default)"
+                                 Style="width: 400px;" />
+
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+                    <FluentButton Appearance="Appearance.Neutral"
+                                  IconStart="@(new Icons.Regular.Size20.Add())"
+                                  OnClick="ShowAddSheetDialog">
+                        Add Sheet
+                    </FluentButton>
+
+                    @if (_sheetsToCreate.Any())
+                    {
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size20.Play())"
+                                      OnClick="ShowConfirmationDialog">
+                            Create All Sheets (@_sheetsToCreate.Count)
+                        </FluentButton>
+                    }
+                </FluentStack>
+
+                @if (_sheetsToCreate.Any())
+                {
+                    <FluentDataGrid Items="@_sheetsToCreate.AsQueryable()"
+                                    ResizableColumns="false"
+                                    RowSize="DataGridRowSize.Medium"
+                                    Style="width: 100%;">
+                        <PropertyColumn Property="@(s => s.SheetNumber)" Sortable="true" Title="Sheet Number" />
+                        <PropertyColumn Property="@(s => s.SheetName)" Sortable="true" Title="Sheet Name" />
+                        <TemplateColumn Title="Actions">
+                            <FluentButton Appearance="Appearance.Lightweight"
+                                          IconStart="@(new Icons.Regular.Size16.Delete())"
+                                          OnClick="@(() => RemoveSheet(context))"
+                                          Title="Remove">
+                                Remove
+                            </FluentButton>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+                else
+                {
+                    <FluentMessageBar Intent="MessageIntent.Info">
+                        No sheets added yet. Click "Add Sheet" to start.
+                    </FluentMessageBar>
+                }
+            </FluentStack>
+        }
+    </FluentStack>
+</FluentStack>
+
+<!-- Add Sheet Dialog -->
+<FluentDialog @bind-Hidden="@_hideAddSheetDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Add New Sheet</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+            <FluentTextField @bind-Value="_newSheetNumber"
+                             Label="Sheet Number"
+                             Placeholder="e.g. A101"
+                             Style="width: 100%;" />
+            <FluentTextField @bind-Value="_newSheetName"
+                             Label="Sheet Name"
+                             Placeholder="e.g. Ground Floor Plan"
+                             Style="width: 100%;" />
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Checkmark())"
+                      OnClick="AddSheet">
+            OK
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      OnClick="CancelAddSheet">
+            Cancel
+        </FluentButton>    </FluentDialogFooter>
+</FluentDialog>
+
+<!-- Confirmation Dialog -->
+<FluentDialog @bind-Hidden="@_hideConfirmDialog"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 600px;">
+    <FluentDialogHeader>
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
+            <FluentIcon Value="@(new Icons.Regular.Size24.Warning())" Color="Color.Accent" />
+            <FluentLabel Typo="Typography.PaneHeader">Confirm Sheet Creation</FluentLabel>
+        </FluentStack>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            <p>You are about to create the following sheets:</p>
+
+            <FluentCard Style="padding: 12px; background: var(--neutral-layer-2);">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                    <div>
+                        <strong>Number of sheets:</strong>
+                        <FluentBadge Appearance="Appearance.Accent" Style="margin-left: 8px;">
+                            @_sheetsToCreate.Count
+                        </FluentBadge>
+                    </div>
+
+                    <div>
+                        <strong>Target model:</strong>
+                        <div style="color: var(--neutral-foreground-hint); margin-left: 4px;">
+                            @_selectedModel?.ModelName
+                        </div>
+                    </div>
+                </FluentStack>
+            </FluentCard>
+
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid var(--neutral-stroke-rest); border-radius: 4px; padding: 12px;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                    @foreach (var sheet in _sheetsToCreate)
+                    {
+                        <div style="padding: 8px; background: var(--neutral-layer-1); border-radius: 4px;">
+                            <FluentIcon Value="@(new Icons.Regular.Size16.DocumentMultiple())" Color="Color.Accent" Style="margin-right: 8px;" />
+                            <strong>@sheet.SheetNumber</strong> – @sheet.SheetName
+                        </div>
+                    }
+                </FluentStack>
+            </div>
+
+            <p style="margin-top: 10px;"><strong>Do you want to proceed?</strong></p>
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size20.Checkmark())"
+                      OnClick="ConfirmCreateSheets">
+            Confirm
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Neutral"
+                      IconStart="@(new Icons.Regular.Size20.Dismiss())"
+                      OnClick="CancelCreateSheets">
+            Cancel
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private string? _projectName;
+    private string? _hubId;
+    private string? _region;
+    private string? _errorMessage;
+
+    // Model selection
+    private bool _isLoadingModels = false;
+    private List<RevitModel>? _availableModels;
+    private string? _selectedModelItemId;
+    private RevitModel? _selectedModel => _availableModels?.FirstOrDefault(m => m.ItemId == _selectedModelItemId);
+
+    // Sheet creation
+    private List<SheetToCreate> _sheetsToCreate = new();
+    private bool _hideAddSheetDialog = true;
+    private string _newSheetNumber = string.Empty;
+    private string _newSheetName = string.Empty;
+    private string _titleBlockName = string.Empty;
+    private bool _hideConfirmDialog = true;
+
+    private class RevitModel
+    {
+        public string ModelName { get; set; } = string.Empty;
+        public string ItemId { get; set; } = string.Empty;
+        public string VersionId { get; set; } = string.Empty;
+        public Guid ModelGuid { get; set; }
+        public string? ProjectGuid { get; set; }
+    }
+
+    private class SheetToCreate
+    {
+        public string SheetNumber { get; set; } = string.Empty;
+        public string SheetName { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/create-sheets-projects");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            return;
+        }
+
+        await LoadProjectDetails();
+        await LoadAvailableModels();
+    }
+
+    public void Dispose()
+    {
+        // Cleanup if needed
+    }
+
+    private async Task LoadProjectDetails()
+    {
+        try
+        {
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
+
+            if (hubs.Data != null)
+            {
+                foreach (var hub in hubs.Data)
+                {
+                    var hubId = hub.Id ?? string.Empty;
+
+                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try
+                    {
+                        var projects = await DataManagementClient.GetHubProjectsAsync(
+                            accessToken: UserSession.AccessToken,
+                            hubId: hubId);
+
+                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                        if (project != null)
+                        {
+                            _projectName = project.Attributes?.Name ?? "Unknown Project";
+                            _hubId = hubId;
+                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading project details: {ex.Message}";
+        }
+    }
+
+    private async Task LoadAvailableModels()
+    {
+        try
+        {
+            _isLoadingModels = true;
+            _availableModels = new List<RevitModel>();
+            StateHasChanged();
+
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(
+                accessToken: UserSession.AccessToken,
+                hubId: _hubId!,
+                projectId: ProjectId!);
+
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    await FindRevitModels(folder.Id ?? string.Empty);
+                }
+            }
+
+            _availableModels = _availableModels.OrderBy(m => m.ModelName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading Revit models: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingModels = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FindRevitModels(string folderId)
+    {
+        try
+        {
+            var contents = await DataManagementClient.GetFolderContentsAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: ProjectId!,
+                folderId: folderId);
+
+            if (contents.Data != null)
+            {
+                // Create a dictionary of version details from the included section for fast lookup
+                var versionDetailsDict = new Dictionary<string, dynamic>();
+
+                if (contents.Included != null)
+                {
+                    foreach (var includedItem in contents.Included)
+                    {
+                        if (includedItem is VersionData versionData && versionData.Id != null)
+                        {
+                            versionDetailsDict[versionData.Id] = versionData;
+                        }
+                    }
+                }
+
+                foreach (var item in contents.Data)
+                {
+                    if (item is FolderData folderData)
+                    {
+                        await FindRevitModels(folderData.Id ?? string.Empty);
+                    }
+                    else if (item is ItemData itemData)
+                    {
+                        var displayName = itemData.Attributes?.DisplayName ?? "Unknown";
+
+                        if (displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) &&
+                            !displayName.ToLower().Contains("template"))
+                        {
+                            var versionId = itemData.Relationships?.Tip?.Data?.Id ?? string.Empty;
+
+                            if (!string.IsNullOrEmpty(versionId) && versionDetailsDict.TryGetValue(versionId, out var versionData))
+                            {
+                                var (modelGuid, projectGuid) = ExtractMetadataFromVersion(versionData as VersionData);
+
+                                _availableModels!.Add(new RevitModel
+                                {
+                                    ModelName = displayName,
+                                    ItemId = itemData.Id ?? string.Empty,
+                                    VersionId = versionId,
+                                    ModelGuid = modelGuid,
+                                    ProjectGuid = projectGuid
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finding models in folder {folderId}: {ex.Message}");
+        }
+    }
+
+    private (Guid modelGuid, string? projectGuid) ExtractMetadataFromVersion(VersionData? versionData)
+    {
+        if (versionData?.Attributes?.Extension?.Data == null)
+        {
+            return (Guid.Empty, null);
+        }
+
+        var extensionData = versionData.Attributes.Extension.Data;
+
+        Guid modelGuid = Guid.Empty;
+        if (extensionData.TryGetValue("modelGuid", out var modelGuidObj))
+        {
+            if (Guid.TryParse(modelGuidObj?.ToString(), out var parsedGuid))
+            {
+                modelGuid = parsedGuid;
+            }
+        }
+
+        string? projectGuid = null;
+        if (extensionData.TryGetValue("projectGuid", out var projectGuidObj))
+        {
+            projectGuid = projectGuidObj?.ToString();
+        }
+
+        return (modelGuid, projectGuid);
+    }
+
+    private void ShowAddSheetDialog()
+    {
+        _newSheetName = string.Empty;
+        _hideAddSheetDialog = false;
+        StateHasChanged();
+    }
+
+    private void AddSheet()
+    {
+        if (string.IsNullOrWhiteSpace(_newSheetNumber) || string.IsNullOrWhiteSpace(_newSheetName))
+            return;
+
+        _sheetsToCreate.Add(new SheetToCreate
+        {
+            SheetNumber = _newSheetNumber.Trim(),
+            SheetName = _newSheetName.Trim()
+        });
+
+        _hideAddSheetDialog = true;
+        _newSheetNumber = string.Empty;
+        _newSheetName = string.Empty;
+        StateHasChanged();
+    }
+
+    private void CancelAddSheet()
+    {
+        _hideAddSheetDialog = true;
+        _newSheetNumber = string.Empty;
+        _newSheetName = string.Empty;
+        StateHasChanged();
+    }
+
+    private void RemoveSheet(SheetToCreate sheet)
+    {
+        _sheetsToCreate.Remove(sheet);
+        StateHasChanged();
+    }
+
+    private void ShowConfirmationDialog()
+    {
+        _hideConfirmDialog = false;
+        StateHasChanged();
+    }
+
+    private void CancelCreateSheets()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+    }
+
+    private async Task ConfirmCreateSheets()
+    {
+        _hideConfirmDialog = true;
+        StateHasChanged();
+        await CreateAllSheets();
+    }
+
+    private async Task CreateAllSheets()
+    {
+        try
+        {
+            _errorMessage = null;
+
+            if (_sheetsToCreate == null || !_sheetsToCreate.Any())
+            {
+                _errorMessage = "No sheets to create";
+                return;
+            }
+
+            if (_selectedModel == null)
+            {
+                _errorMessage = "Please select a Revit model";
+                return;
+            }
+
+            var sheets = _sheetsToCreate.Select(s => new SheetDefinition
+            {
+                SheetNumber = s.SheetNumber,
+                SheetName = s.SheetName
+            }).ToList();
+
+            var result = await RevitAutomationTools.CreateSheets(
+                region: _region!,
+                projectGuid: _selectedModel.ProjectGuid!,
+                modelGuid: _selectedModel.ModelGuid.ToString(),
+                sheets: sheets,
+                titleBlockName: string.IsNullOrWhiteSpace(_titleBlockName) ? null : _titleBlockName.Trim());
+
+            if (!result.IsSuccess)
+            {
+                _errorMessage = $"Failed to submit work item: {result.Message}";
+                return;
+            }
+
+            var sheetDetails = _sheetsToCreate.Select(s => new SheetCreationDetail
+            {
+                SheetNumber = s.SheetNumber,
+                SheetName = s.SheetName
+            }).ToList();
+
+            SheetCreationJobStatusService.StoreSheetCreationJobDetails(
+                workItemId: result.WorkItemId!,
+                projectId: ProjectId!,
+                projectName: _projectName ?? string.Empty,
+                userName: UserSession.UserName ?? string.Empty,
+                modelName: _selectedModel.ModelName,
+                sheets: sheetDetails,
+                titleBlockName: string.IsNullOrWhiteSpace(_titleBlockName) ? null : _titleBlockName.Trim());
+
+            _sheetsToCreate.Clear();
+            NavigationManager.NavigateTo($"/{ProjectId}/sheet-creation-tracking");
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error creating sheets: {ex.Message}";
+        }
+    }
+}
