@@ -11,11 +11,11 @@
 
 A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases three key capabilities powered by the **APS Automation API** and **Data Management API**:
 
-- **Create Revit Models** – Programmatically create Revit cloud models inside Autodesk Construction Cloud (ACC) projects.
+- **Create Revit Models** – Programmatically create Revit cloud models inside Forma for Construction) projects.
 - **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix.
 - **Create Sheets** – Batch-create sheets in Revit cloud models.
 
-The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their ACC hubs and projects through a folder explorer, configure automation jobs, and track their real-time status.
+The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their hubs of Forma for Construction and projects through a folder explorer, configure automation jobs, and track their real-time status.
 
 ![thumbnail](thumbnail.png)
 
@@ -45,9 +45,9 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
 - [Autodesk Platform Services app credentials](https://aps.autodesk.com/myapps/) (Client ID & Client Secret) with the following APIs enabled:
   - Data Management API
-  - ACC API
+  - Forma for Construction API
   - Automation API
-- A provisioned **Autodesk Construction Cloud (ACC)** account with at least one hub and project
+- A provisioned **Forma for Construction** account with at least one hub and project
 - **Automation Activity** deployed for [APS Automation API Revit MCP Tools Sample](https://github.com/autodesk-platform-services/aps-automation-api-revit-mcp-tools-sample)
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 - A valid **Callback URL** registered on your APS app (e.g. `https://localhost:7000/api/auth/callback`)
