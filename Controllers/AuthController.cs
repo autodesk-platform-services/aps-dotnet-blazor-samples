@@ -19,7 +19,8 @@ public class AuthController(
             Scopes.DataRead,
             Scopes.DataWrite,
             Scopes.DataCreate,
-            Scopes.CodeAll 
+            Scopes.CodeAll,
+            Scopes.ViewablesRead
         };
 
         // Store return URL in session or state parameter
@@ -56,7 +57,8 @@ public class AuthController(
                 Scopes.DataWrite,
                 Scopes.DataCreate,
                 Scopes.UserRead,
-                Scopes.CodeAll
+                Scopes.CodeAll,
+                Scopes.ViewablesRead
             };
 
             var token = await apsAuth.GetThreeLeggedTokenAsync(code, scopes);
@@ -94,6 +96,17 @@ public class AuthController(
             logger.LogError(ex, "Error during OAuth callback");
             return Redirect($"/?error={Uri.EscapeDataString(ex.Message)}");
         }
+    }
+
+    [HttpGet("viewer-token")]
+    public IActionResult ViewerToken()
+    {
+        if (string.IsNullOrEmpty(userSession.AccessToken))
+        {
+            return Unauthorized();
+        }
+
+        return Ok(new { accessToken = userSession.AccessToken, expiresIn = 3600 });
     }
 
     [HttpGet("logout")]

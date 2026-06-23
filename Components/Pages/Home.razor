@@ -76,6 +76,21 @@
                     </FluentButton>
                 </FluentStack>
             </FluentCard>
+
+            <FluentCard Style="max-width: 400px; padding: 24px;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.Eye())" Color="Color.Accent" />
+                    <h3>View Models</h3>
+                    <p style="color: var(--neutral-foreground-hint);">
+                        View Revit cloud models using the APS Viewer.
+                    </p>
+                    <FluentButton Appearance="Appearance.Accent"
+                                 IconStart="@(new Icons.Regular.Size20.Eye())"
+                                 OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
+                        View Models
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
         </FluentStack>
     }
 </FluentStack>
