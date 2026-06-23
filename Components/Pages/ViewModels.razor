@@ -1,0 +1,311 @@
+@page "/{ProjectId}/view-models"
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>View Models - @_projectName</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
+        Back to Projects
+    </FluentButton>
+
+    <div>
+        <h1>View Models</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+    }
+
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Style="min-width: 400px;">
+        <h3>Select Revit Model</h3>
+
+        @if (_isLoadingModels)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 20px;">
+                <FluentProgressRing />
+                <span>Loading Revit models...</span>
+            </FluentStack>
+        }
+        else if (_availableModels != null && _availableModels.Any())
+        {
+            <FluentSelect TOption="RevitModel"
+                          Items="@_availableModels"
+                          OptionValue="@(m => m.ItemId)"
+                          OptionText="@(m => m.ModelName)"
+                          @bind-Value="@_selectedModelItemId"
+                          @bind-Value:after="OnModelSelected"
+                          Placeholder="Select a Revit model..."
+                          Width="400px">
+            </FluentSelect>
+
+            @if (!string.IsNullOrEmpty(_selectedModelItemId))
+            {
+                <div style="margin-top: 12px; padding: 12px; background: var(--accent-fill-rest); color: white; border-radius: 4px;">
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                        <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" Color="Color.Fill" />
+                        <strong>Viewing: @_selectedModel?.ModelName</strong>
+                    </FluentStack>
+                </div>
+            }
+        }
+        else
+        {
+            <FluentMessageBar Intent="MessageIntent.Warning">
+                No Revit models found in this project.
+            </FluentMessageBar>
+        }
+    </FluentStack>
+
+    @if (!string.IsNullOrEmpty(_selectedModelItemId))
+    {
+        <div id="aps-viewer" style="width: 100%; height: calc(100vh - 300px); position: relative;"></div>
+    }
+</FluentStack>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private string? _projectName;
+    private string? _hubId;
+    private string? _errorMessage;
+
+    private bool _isLoadingModels = false;
+    private List<RevitModel>? _availableModels;
+    private string? _selectedModelItemId;
+    private RevitModel? _selectedModel => _availableModels?.FirstOrDefault(m => m.ItemId == _selectedModelItemId);
+
+    private IJSObjectReference? _jsModule;
+
+    private class RevitModel
+    {
+        public string ModelName { get; set; } = string.Empty;
+        public string ItemId { get; set; } = string.Empty;
+        public string VersionId { get; set; } = string.Empty;
+        public string DerivativeUrn { get; set; } = string.Empty;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/view-models-projects");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            return;
+        }
+
+        await LoadProjectDetails();
+        await LoadAvailableModels();
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
+                "./Components/Pages/ViewModels.razor.js");
+        }
+    }
+
+    private async Task OnModelSelected()
+    {
+        if (_jsModule == null || string.IsNullOrEmpty(_selectedModelItemId))
+            return;
+
+        var model = _availableModels?.FirstOrDefault(m => m.ItemId == _selectedModelItemId);
+        if (model == null || string.IsNullOrEmpty(model.DerivativeUrn))
+            return;
+
+        await Task.Yield();
+        StateHasChanged();
+        await Task.Delay(100);
+
+        await _jsModule.InvokeVoidAsync("initViewer", "aps-viewer", "/api/auth/viewer-token");
+        await _jsModule.InvokeVoidAsync("loadModel", model.DerivativeUrn);
+    }
+
+    private async Task LoadProjectDetails()
+    {
+        try
+        {
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
+
+            if (hubs.Data != null)
+            {
+                foreach (var hub in hubs.Data)
+                {
+                    var hubId = hub.Id ?? string.Empty;
+
+                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        continue;
+
+                    try
+                    {
+                        var projects = await DataManagementClient.GetHubProjectsAsync(
+                            accessToken: UserSession.AccessToken,
+                            hubId: hubId);
+
+                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                        if (project != null)
+                        {
+                            _projectName = project.Attributes?.Name ?? "Unknown Project";
+                            _hubId = hubId;
+                            return;
+                        }
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading project details: {ex.Message}";
+        }
+    }
+
+    private async Task LoadAvailableModels()
+    {
+        try
+        {
+            _isLoadingModels = true;
+            _availableModels = new List<RevitModel>();
+            StateHasChanged();
+
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(
+                accessToken: UserSession.AccessToken,
+                hubId: _hubId!,
+                projectId: ProjectId!);
+
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    await FindRevitModels(folder.Id ?? string.Empty);
+                }
+            }
+
+            _availableModels = _availableModels.OrderBy(m => m.ModelName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading Revit models: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingModels = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FindRevitModels(string folderId)
+    {
+        try
+        {
+            var contents = await DataManagementClient.GetFolderContentsAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: ProjectId!,
+                folderId: folderId);
+
+            if (contents.Data != null)
+            {
+                var versionDetailsDict = new Dictionary<string, dynamic>();
+
+                if (contents.Included != null)
+                {
+                    foreach (var includedItem in contents.Included)
+                    {
+                        if (includedItem is VersionData versionData && versionData.Id != null)
+                        {
+                            versionDetailsDict[versionData.Id] = versionData;
+                        }
+                    }
+                }
+
+                foreach (var item in contents.Data)
+                {
+                    if (item is FolderData folderData)
+                    {
+                        await FindRevitModels(folderData.Id ?? string.Empty);
+                    }
+                    else if (item is ItemData itemData)
+                    {
+                        var displayName = itemData.Attributes?.DisplayName ?? "Unknown";
+
+                        if (displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase) &&
+                            !displayName.ToLower().Contains("template"))
+                        {
+                            var versionId = itemData.Relationships?.Tip?.Data?.Id ?? string.Empty;
+
+                            if (!string.IsNullOrEmpty(versionId) && versionDetailsDict.TryGetValue(versionId, out var versionData))
+                            {
+                                var derivativeUrn = (versionData as VersionData)?.Relationships?.Derivatives?.Data?.Id ?? string.Empty;
+
+                                _availableModels!.Add(new RevitModel
+                                {
+                                    ModelName = displayName,
+                                    ItemId = itemData.Id ?? string.Empty,
+                                    VersionId = versionId,
+                                    DerivativeUrn = derivativeUrn
+                                });
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finding models in folder {folderId}: {ex.Message}");
+        }
+    }
+
+    public async ValueTask DisposeAsync()
+    {
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.InvokeVoidAsync("destroyViewer");
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+
+            try
+            {
+                await _jsModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException)
+            {
+            }
+        }
+    }
+}
