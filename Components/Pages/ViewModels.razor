@@ -12,74 +12,78 @@
 
 <PageTitle>View Models - @_projectName</PageTitle>
 
-<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
-        Back to Projects
-    </FluentButton>
+<FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" VerticalAlignment="VerticalAlignment.Top">
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="20" Style="width: 420px; flex: 0 0 420px;">
+        <FluentButton Appearance="Appearance.Lightweight"
+                      IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                      OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
+            Back to Projects
+        </FluentButton>
 
-    <div>
-        <h1>View Models</h1>
-        @if (!string.IsNullOrEmpty(_projectName))
-        {
-            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
-                Project: @_projectName
-            </p>
-        }
-    </div>
-
-    @if (!string.IsNullOrEmpty(_errorMessage))
-    {
-        <FluentMessageBar Intent="MessageIntent.Error">
-            @_errorMessage
-        </FluentMessageBar>
-    }
-
-    <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Style="min-width: 400px;">
-        <h3>Select Revit Model</h3>
-
-        @if (_isLoadingModels)
-        {
-            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 20px;">
-                <FluentProgressRing />
-                <span>Loading Revit models...</span>
-            </FluentStack>
-        }
-        else if (_availableModels != null && _availableModels.Any())
-        {
-            <FluentSelect TOption="RevitModel"
-                          Items="@_availableModels"
-                          OptionValue="@(m => m.ItemId)"
-                          OptionText="@(m => m.ModelName)"
-                          @bind-Value="@_selectedModelItemId"
-                          @bind-Value:after="OnModelSelected"
-                          Placeholder="Select a Revit model..."
-                          Width="400px">
-            </FluentSelect>
-
-            @if (!string.IsNullOrEmpty(_selectedModelItemId))
+        <div>
+            <h1>View Models</h1>
+            @if (!string.IsNullOrEmpty(_projectName))
             {
-                <div style="margin-top: 12px; padding: 12px; background: var(--accent-fill-rest); color: white; border-radius: 4px;">
-                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
-                        <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" Color="Color.Fill" />
-                        <strong>Viewing: @_selectedModel?.ModelName</strong>
-                    </FluentStack>
-                </div>
+                <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                    Project: @_projectName
+                </p>
             }
-        }
-        else
+        </div>
+
+        @if (!string.IsNullOrEmpty(_errorMessage))
         {
-            <FluentMessageBar Intent="MessageIntent.Warning">
-                No Revit models found in this project.
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_errorMessage
             </FluentMessageBar>
         }
+
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="15">
+            <h3>Select Revit Model</h3>
+
+            @if (_isLoadingModels)
+            {
+                <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 20px;">
+                    <FluentProgressRing />
+                    <span>Loading Revit models...</span>
+                </FluentStack>
+            }
+            else if (_availableModels != null && _availableModels.Any())
+            {
+                <FluentSelect TOption="RevitModel"
+                              Items="@_availableModels"
+                              OptionValue="@(m => m.ItemId)"
+                              OptionText="@(m => m.ModelName)"
+                              @bind-Value="@_selectedModelItemId"
+                              @bind-Value:after="OnModelSelected"
+                              Placeholder="Select a Revit model..."
+                              Width="400px">
+                </FluentSelect>
+
+                @if (!string.IsNullOrEmpty(_selectedModelItemId))
+                {
+                    <div style="margin-top: 12px; padding: 12px; background: var(--accent-fill-rest); color: white; border-radius: 4px;">
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                            <FluentIcon Value="@(new Icons.Regular.Size20.Eye())" Color="Color.Fill" />
+                            <strong>Viewing: @_selectedModel?.ModelName</strong>
+                        </FluentStack>
+                    </div>
+                }
+            }
+            else
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning">
+                    No Revit models found in this project.
+                </FluentMessageBar>
+            }
+        </FluentStack>
     </FluentStack>
 
-    @if (!string.IsNullOrEmpty(_selectedModelItemId))
-    {
-        <div id="aps-viewer" style="width: 100%; height: calc(100vh - 300px); position: relative;"></div>
-    }
+    <div style="flex: 1 1 auto; min-width: 0;">
+        @if (!string.IsNullOrEmpty(_selectedModelItemId))
+        {
+            <div id="aps-viewer" style="width: 100%; height: calc(100vh - 140px); position: relative;"></div>
+        }
+    </div>
 </FluentStack>
 
 @code {
