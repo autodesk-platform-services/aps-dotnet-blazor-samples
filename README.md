@@ -73,7 +73,7 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
        "ClientId": "<your-client-id>",
        "ClientSecret": "<your-client-secret>",
        "CallbackUrl": "https://localhost:<port>/api/auth/callback",
-       "AutomationActivity": "<your-activity-alias>"
+       "RevitAutomationActivity": "<your-activity-alias>"
      }
    }
    ```
@@ -84,7 +84,7 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
    dotnet user-secrets set "Forge:ClientId" "<your-client-id>"
    dotnet user-secrets set "Forge:ClientSecret" "<your-client-secret>"
    dotnet user-secrets set "Forge:CallbackUrl" "https://localhost:<port>/api/auth/callback"
-   dotnet user-secrets set "Forge:AutomationActivity" "<your-activity-alias>"
+   dotnet user-secrets set "Forge:RevitAutomationActivity" "<your-activity-alias>"
    ```
 
 3. **Run the application**
