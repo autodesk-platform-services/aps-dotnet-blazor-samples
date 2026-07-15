@@ -30,11 +30,12 @@ The app uses 3-legged OAuth to authenticate users via their Autodesk account, th
 ## Usage
 
 1. Sign in with your Autodesk account via the **Sign In** button on the home page.
-2. Choose one of the three workflows from the home page cards:
+2. Choose one of the four workflows from the home page cards:
    - **Create Revit Models** – select a project and target folder, fill in the model configuration, and submit.
    - **Manage Revit Links** – select a project, build a link matrix between models, and apply it.
    - **Create Sheets** – select a project and Revit model, define the sheet list, and submit.
-3. Track job progress on the corresponding tracking page; results are updated in real time.
+   - **View Models** – select a project, then select a .rvt model from the list to render it in the APS Viewer.
+3. For the three automation workflows (Create Revit Models, Manage Revit Links, Create Sheets), track job progress on the corresponding tracking page; results are updated in real time. **View Models** is read-only and has no tracking page.
 
 https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
