@@ -9,7 +9,7 @@
 
 ---
 
-A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases four key capabilities powered by the **APS Automation API**, **Data Management API**, and **Model Derivative API**:
+A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases four key capabilities powered by the **APS Automation API**, **Data Management API**, and **Forma APIs**:
 
 - **Create Revit Models** – Programmatically create Revit cloud models inside Forma for Construction) projects.
 - **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
