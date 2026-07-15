@@ -107,6 +107,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - Set the four `Forge:*` values as environment variables or application settings.
 - Ensure the **Callback URL** registered on your APS app matches the deployed URL.
 - Automation API workitems use ngrok-style HTTP callbacks on the `/da` path — configure any reverse proxy to pass that path through without HTTPS redirection.
+- The `GET /api/auth/viewer-token` endpoint is called from the browser by the APS Viewer and must be reachable over HTTPS on the deployed origin.
 
 ### Known limitations
 
@@ -118,6 +119,8 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - [Autodesk Platform Services documentation](https://aps.autodesk.com/developer/documentation)
 - [Automation API](https://aps.autodesk.com/en/docs/design-automation/v3/developers_guide/overview/)
 - [Data Management API](https://aps.autodesk.com/en/docs/data/v2/developers_guide/overview/)
+- [Model Derivative API](https://aps.autodesk.com/en/docs/model-derivative/v2/developers_guide/overview/)
+- [APS Viewer](https://aps.autodesk.com/en/docs/viewer/v7/developers_guide/overview/)
 
 ---
 
