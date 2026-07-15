@@ -31,6 +31,8 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<ICreationJobStatusService, CreationJobStatusService>();
         services.AddSingleton<ILinkingJobStatusService, LinkingJobStatusService>();
         services.AddSingleton<ISheetCreationJobStatusService, SheetCreationJobStatusService>();
+        services.AddSingleton<IAgentTaskService, AgentTaskService>();
+        services.AddSingleton<IAgentConversationService, AgentConversationService>();
 
         return services;
     }
