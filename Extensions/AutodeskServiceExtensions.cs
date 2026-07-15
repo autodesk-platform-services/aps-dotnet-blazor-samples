@@ -26,6 +26,7 @@ public static class AutodeskServiceExtensions
         services.AddScoped<INamingStandardsService, NamingStandardsService>();
         services.AddScoped<IRevitAutomationService, RevitAutomationService>();
         services.AddScoped<RevitAutomationTools>();
+        services.AddScoped<IProjectRoleService, ProjectRoleService>();
 
         services.AddSingleton<ICreationJobStatusService, CreationJobStatusService>();
         services.AddSingleton<ILinkingJobStatusService, LinkingJobStatusService>();
