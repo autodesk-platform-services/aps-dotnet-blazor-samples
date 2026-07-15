@@ -49,6 +49,7 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
   - Data Management API
   - Forma for Construction API
   - Automation API
+  - Model Derivative API
 - A provisioned **Forma for Construction** account with at least one hub and project
 - **Automation Activity** deployed for [APS Automation API Revit MCP Tools Sample](https://github.com/autodesk-platform-services/aps-automation-api-revit-mcp-tools-sample)
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
