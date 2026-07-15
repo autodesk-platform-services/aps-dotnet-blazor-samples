@@ -2,6 +2,8 @@ using ApsSamples.Models;
 using ApsSamples.Services;
 using Autodesk.DataManagement;
 using Autodesk.Forge.DesignAutomation;
+using Microsoft.Extensions.AI;
+using OllamaSharp;
 
 namespace ApsSamples.Extensions;
 
@@ -33,6 +35,10 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<ISheetCreationJobStatusService, SheetCreationJobStatusService>();
         services.AddSingleton<IAgentTaskService, AgentTaskService>();
         services.AddSingleton<IAgentConversationService, AgentConversationService>();
+
+        var agentOptions = configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
+        services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(agentOptions.OllamaEndpoint), agentOptions.ModelName));
+        services.AddScoped<IAgentChatService, AgentChatService>();
 
         return services;
     }
