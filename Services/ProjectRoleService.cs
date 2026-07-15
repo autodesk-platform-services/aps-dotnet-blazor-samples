@@ -1,6 +1,4 @@
-using System.Net.Http.Headers;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using Autodesk.Construction.AccountAdmin;
 
 namespace ApsSamples.Services;
 
@@ -9,11 +7,11 @@ public static class RoleNames
     public const string BimManager = "BIM Manager";
 }
 
-public class ProjectRoleService(IHttpClientFactory httpClientFactory, ILogger<ProjectRoleService> logger) : IProjectRoleService
+public class ProjectRoleService(AdminClient adminClient, ILogger<ProjectRoleService> logger) : IProjectRoleService
 {
     private readonly Dictionary<string, IReadOnlyList<string>> _cache = new();
 
-    public async Task<IReadOnlyList<string>> GetProjectRolesAsync(string projectId, string accessToken)
+    public async Task<IReadOnlyList<string>> GetProjectRolesAsync(string projectId, string userId, string accessToken)
     {
         if (_cache.TryGetValue(projectId, out var cached))
         {
@@ -22,27 +20,17 @@ public class ProjectRoleService(IHttpClientFactory httpClientFactory, ILogger<Pr
 
         try
         {
-            var httpClient = httpClientFactory.CreateClient();
-            httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
+            // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
+            var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+                ? projectId[2..]
+                : projectId;
 
-            var url = $"https://developer.api.autodesk.com/construction/admin/v2/projects/{projectId}/users/me";
+            var projectUser = await adminClient.GetProjectUserAsync(
+                projectId: accountProjectId,
+                userId: userId,
+                accessToken: accessToken);
 
-            var response = await httpClient.GetAsync(url);
-
-            if (!response.IsSuccessStatusCode)
-            {
-                var errorContent = await response.Content.ReadAsStringAsync();
-                logger.LogWarning("ACC AccountAdmin /users/me failed for project {ProjectId}: {StatusCode} - {Content}",
-                    projectId, response.StatusCode, errorContent);
-                _cache[projectId] = Array.Empty<string>();
-                return _cache[projectId];
-            }
-
-            var content = await response.Content.ReadAsStringAsync();
-            var options = new JsonSerializerOptions { PropertyNameCaseInsensitive = true };
-            var payload = JsonSerializer.Deserialize<ProjectUserMeResponse>(content, options);
-
-            var roles = payload?.Roles?
+            var roles = projectUser?.Roles?
                 .Select(r => r.Name ?? string.Empty)
                 .Where(n => !string.IsNullOrWhiteSpace(n))
                 .ToList() ?? new List<string>();
@@ -58,21 +46,9 @@ public class ProjectRoleService(IHttpClientFactory httpClientFactory, ILogger<Pr
         }
     }
 
-    public async Task<bool> IsBimManagerAsync(string projectId, string accessToken)
+    public async Task<bool> IsBimManagerAsync(string projectId, string userId, string accessToken)
     {
-        var roles = await GetProjectRolesAsync(projectId, accessToken);
+        var roles = await GetProjectRolesAsync(projectId, userId, accessToken);
         return roles.Any(r => string.Equals(r, RoleNames.BimManager, StringComparison.OrdinalIgnoreCase));
-    }
-
-    private class ProjectUserMeResponse
-    {
-        [JsonPropertyName("roles")]
-        public List<ProjectUserRole>? Roles { get; set; }
-    }
-
-    private class ProjectUserRole
-    {
-        [JsonPropertyName("name")]
-        public string? Name { get; set; }
     }
 }

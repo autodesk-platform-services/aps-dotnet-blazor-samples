@@ -126,6 +126,7 @@
             StateHasChanged();
 
             var accessToken = UserSession.AccessToken ?? string.Empty;
+            var userId = UserSession.UserId ?? string.Empty;
 
             var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
             var hubsList = hubs.Data?.ToList() ?? new List<HubData>();
@@ -159,7 +160,7 @@
                             continue;
                         }
 
-                        var isBimManager = await RoleService.IsBimManagerAsync(projectId, accessToken);
+                        var isBimManager = await RoleService.IsBimManagerAsync(projectId, userId, accessToken);
                         if (!isBimManager)
                         {
                             continue;

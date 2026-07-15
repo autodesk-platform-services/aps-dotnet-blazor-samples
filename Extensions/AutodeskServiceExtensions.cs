@@ -1,5 +1,6 @@
 using ApsSamples.Models;
 using ApsSamples.Services;
+using Autodesk.Construction.AccountAdmin;
 using Autodesk.DataManagement;
 using Autodesk.Forge.DesignAutomation;
 using Microsoft.Extensions.AI;
@@ -23,6 +24,7 @@ public static class AutodeskServiceExtensions
 
         services.AddAutodeskServices(configuration);
         services.AddDesignAutomation(configuration);
+        services.AddConstructionAccountAdmin(configuration);
 
         services.AddScoped<IAccLinkedFilesService, AccLinkedFilesService>();
         services.AddScoped<INamingStandardsService, NamingStandardsService>();

@@ -72,6 +72,7 @@ public class AuthController(
                 var userInfo = await apsAuth.GetUserInfoAsync(token);
                 userSession.UserName = userInfo.Name;
                 userSession.UserEmail = userInfo.Email;
+                userSession.UserId = userInfo.Sub;
                 
                 logger.LogInformation("User authenticated: {UserName} ({Email})", userInfo.Name, userInfo.Email);
             }

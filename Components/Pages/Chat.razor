@@ -223,7 +223,8 @@
         }
 
         var accessToken = UserSession.AccessToken ?? string.Empty;
-        var isBimManager = await RoleService.IsBimManagerAsync(ProjectId, accessToken);
+        var accountAdminUserId = UserSession.UserId ?? string.Empty;
+        var isBimManager = await RoleService.IsBimManagerAsync(ProjectId, accountAdminUserId, accessToken);
         if (!isBimManager)
         {
             NavigationManager.NavigateTo("/chat-projects?error=unauthorized");
