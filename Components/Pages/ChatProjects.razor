@@ -1,0 +1,194 @@
+@page "/chat-projects"
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject DataManagementClient DataManagementClient
+@inject IProjectRoleService RoleService
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>AI Agents Chat - Select Project</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <div>
+        <h1>AI Agents Chat</h1>
+        <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+            Select a project to start chatting with agents
+        </p>
+    </div>
+
+    @if (!UserSession.IsAuthenticated)
+    {
+        <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="margin-top: 60px;">
+            <FluentCard Style="max-width: 450px; width: 100%; padding: 30px;">
+                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="20">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.LockClosed())" Color="Color.Neutral" Style="align-self: center;" />
+                    <h3 style="text-align: center; margin: 0;">Authentication Required</h3>
+                    <p style="text-align: center; margin: 0; color: var(--neutral-foreground-hint);">
+                        Please login with your Autodesk account to access your hubs and projects.
+                    </p>
+                    <FluentButton IconStart="@(new Icons.Regular.Size20.Person())" OnClick="Login" Appearance="Appearance.Accent">
+                        Login with Autodesk
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+        </FluentStack>
+    }
+    else
+    {
+        @if (_showUnauthorizedBanner)
+        {
+            <FluentMessageBar Intent="MessageIntent.Warning">
+                Access denied. You do not have the BIM Manager role for that project.
+            </FluentMessageBar>
+        }
+
+        @if (_isLoading)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
+                <FluentProgressRing />
+                <span>Loading projects...</span>
+            </FluentStack>
+        }
+        else if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">
+                @_errorMessage
+            </FluentMessageBar>
+            <FluentButton Appearance="Appearance.Accent" OnClick="LoadAllData">Retry</FluentButton>
+        }
+        else if (_allProjects != null && _allProjects.Any())
+        {
+            <FluentDataGrid Items="@_allProjects.AsQueryable()"
+                            ResizableColumns="true"
+                            RowSize="DataGridRowSize.Medium"
+                            Style="width: 100%;">
+                <PropertyColumn Property="@(p => p.ProjectName)" Sortable="true" Title="Projects" />
+                <PropertyColumn Property="@(p => p.HubName)" Sortable="true" Title="Hub" />
+                <PropertyColumn Property="@(p => p.HubRegion)" Title="Region" Width="100px" />
+                <PropertyColumn Property="@(p => p.Role)" Title="Your Role" />
+                <TemplateColumn Title="Actions">
+                    <FluentButton Appearance="Appearance.Accent"
+                                  IconStart="@(new Icons.Regular.Size16.Chat())"
+                                  OnClick="@(() => NavigationManager.NavigateTo($"/{context.ProjectId}/chat"))">
+                        Open Chat
+                    </FluentButton>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+        else
+        {
+            <FluentMessageBar Intent="MessageIntent.Info">
+                Only projects where you are a BIM Manager are shown. No eligible projects were found.
+            </FluentMessageBar>
+        }
+    }
+</FluentStack>
+
+@code {
+    private bool _isLoading;
+    private string? _errorMessage;
+    private bool _showUnauthorizedBanner;
+    private List<ChatProjectInfo>? _allProjects;
+
+    private record ChatProjectInfo(string ProjectId, string ProjectName, string HubName, string HubRegion, string Role);
+
+    protected override async Task OnInitializedAsync()
+    {
+        var uri = new Uri(NavigationManager.Uri);
+        var queryParams = Microsoft.AspNetCore.WebUtilities.QueryHelpers.ParseQuery(uri.Query);
+        if (queryParams.TryGetValue("error", out var errorValue) &&
+            string.Equals(errorValue.ToString(), "unauthorized", StringComparison.OrdinalIgnoreCase))
+        {
+            _showUnauthorizedBanner = true;
+        }
+
+        if (UserSession.IsAuthenticated)
+        {
+            await LoadAllData();
+        }
+    }
+
+    private void Login()
+    {
+        NavigationManager.NavigateTo("/api/auth/login?returnUrl=/chat-projects", forceLoad: true);
+    }
+
+    private async Task LoadAllData()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            _allProjects = new List<ChatProjectInfo>();
+            StateHasChanged();
+
+            var accessToken = UserSession.AccessToken ?? string.Empty;
+
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
+            var hubsList = hubs.Data?.ToList() ?? new List<HubData>();
+
+            foreach (var hub in hubsList)
+            {
+                var hubId = hub.Id ?? string.Empty;
+                var hubName = hub.Attributes?.Name ?? "Unknown Hub";
+                var hubRegion = hub.Attributes?.Region.ToString() ?? "N/A";
+
+                try
+                {
+                    var projects = await DataManagementClient.GetHubProjectsAsync(
+                        accessToken: accessToken,
+                        hubId: hubId);
+
+                    var projectsList = projects.Data?.ToList() ?? new List<ProjectData>();
+
+                    foreach (var project in projectsList)
+                    {
+                        var projectId = project.Id ?? string.Empty;
+                        var projectName = project.Attributes?.Name ?? "Unknown Project";
+
+                        if (!projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        if (projectName.Contains("Component Library", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        var isBimManager = await RoleService.IsBimManagerAsync(projectId, accessToken);
+                        if (!isBimManager)
+                        {
+                            continue;
+                        }
+
+                        _allProjects.Add(new ChatProjectInfo(
+                            projectId,
+                            projectName,
+                            hubName,
+                            hubRegion,
+                            RoleNames.BimManager));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading projects from hub {hubName}: {ex.Message}");
+                }
+            }
+
+            _allProjects = _allProjects.OrderBy(p => p.ProjectName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading projects: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+}
