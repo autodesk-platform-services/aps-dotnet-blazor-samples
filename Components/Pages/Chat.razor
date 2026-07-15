@@ -1,0 +1,409 @@
+@page "/{ProjectId}/chat"
+@using ApsSamples.Models
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.AspNetCore.Components.Web
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject IProjectRoleService RoleService
+@inject IAgentChatService ChatService
+@inject IAgentConversationService ConversationService
+@inject IAgentTaskService TaskService
+@inject DataManagementClient DataManagementClient
+@inject NavigationManager NavigationManager
+@inject IJSRuntime JS
+@implements IAsyncDisposable
+@rendermode InteractiveServer
+
+<PageTitle>AI Agents Chat - @(_projectName ?? "Chat")</PageTitle>
+
+<style>
+    .chat-message-bubble {
+        max-width: 80%;
+        padding: 10px 14px;
+        border-radius: 12px;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+    }
+
+    .chat-user-bubble {
+        background: var(--accent-fill-rest);
+        color: var(--foreground-on-accent-rest);
+        align-self: flex-end;
+        border-bottom-right-radius: 4px;
+    }
+
+    .chat-assistant-bubble {
+        background: var(--neutral-layer-3);
+        color: var(--neutral-foreground-rest);
+        align-self: flex-start;
+        border-bottom-left-radius: 4px;
+    }
+
+    .chat-message-row {
+        display: flex;
+        flex-direction: column;
+        margin-bottom: 12px;
+    }
+
+    .chat-message-timestamp {
+        font-size: 11px;
+        color: var(--neutral-foreground-hint);
+        margin-top: 3px;
+    }
+
+    .chat-two-col {
+        align-items: flex-start;
+        height: calc(100vh - 180px);
+    }
+
+    @@media (max-width: 768px) {
+        .chat-two-col {
+            flex-direction: column !important;
+            height: auto !important;
+        }
+        .chat-task-panel {
+            width: 100% !important;
+            flex: 0 0 auto !important;
+            max-height: 300px;
+        }
+    }
+</style>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+    <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/chat-projects"))">
+        Back to Projects
+    </FluentButton>
+
+    <div>
+        <h1>AI Agents Chat</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+    }
+    else if (_conversation != null)
+    {
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" Class="chat-two-col">
+            <FluentStack Orientation="Orientation.Vertical"
+                         VerticalGap="8"
+                         Class="chat-task-panel"
+                         Style="width: 360px; flex: 0 0 360px; overflow-y: auto; height: 100%;">
+                <h3 style="margin: 0;">Agent Tasks</h3>
+                @if (_agentTasks.Count == 0)
+                {
+                    <p style="color: var(--neutral-foreground-hint);">No tasks yet.</p>
+                }
+                else
+                {
+                    @foreach (var task in _agentTasks)
+                    {
+                        <details style="border: 1px solid var(--neutral-stroke-rest); border-radius: 6px; padding: 8px;">
+                            <summary style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                <span style="flex: 1 1 auto;">@task.Name</span>
+                                <FluentBadge Appearance="@GetTaskBadgeAppearance(task.Status)">
+                                    @task.Status
+                                </FluentBadge>
+                            </summary>
+                            <div style="margin-top: 8px; font-size: 12px;">
+                                <div>Started: @task.StartedAt.ToLocalTime().ToString("g")</div>
+                                @if (task.CompletedAt.HasValue)
+                                {
+                                    <div>Completed: @task.CompletedAt.Value.ToLocalTime().ToString("g")</div>
+                                }
+                                @if (!string.IsNullOrEmpty(task.ProgressDetail))
+                                {
+                                    <div style="margin-top: 4px;">@task.ProgressDetail</div>
+                                }
+                                @if (task.Status == AgentTaskStatus.Failed && !string.IsNullOrEmpty(task.ErrorDetail))
+                                {
+                                    <div style="margin-top: 4px; color: var(--error);">@task.ErrorDetail</div>
+                                }
+                            </div>
+                        </details>
+                    }
+                }
+            </FluentStack>
+
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px;">
+                <div style="flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
+                    @if (_conversation.Messages.Count == 0)
+                    {
+                        <p style="color: var(--neutral-foreground-hint); text-align: center; margin-top: 40px;">
+                            Start a conversation by typing a message below.
+                        </p>
+                    }
+                    else
+                    {
+                        @foreach (var msg in _conversation.Messages)
+                        {
+                            var isUser = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase);
+                            <div class="chat-message-row" style="align-items: @(isUser ? "flex-end" : "flex-start");">
+                                <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
+                                    @msg.Content
+                                </div>
+                                <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
+                            </div>
+                        }
+                    }
+                    <div @ref="_scrollAnchor"></div>
+                </div>
+
+                <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
+                    <FluentTextArea @bind-Value="_inputText"
+                                    @bind-Value:event="oninput"
+                                    Placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                                    Rows="3"
+                                    Style="width: 100%;"
+                                    Disabled="_isStreaming"
+                                    @onkeydown="HandleKeyDown" />
+                    <FluentStack Orientation="Orientation.Horizontal"
+                                 HorizontalAlignment="HorizontalAlignment.End"
+                                 VerticalAlignment="VerticalAlignment.Center"
+                                 HorizontalGap="8"
+                                 Style="margin-top: 8px;">
+                        @if (_isStreaming)
+                        {
+                            <FluentProgressRing Style="width: 20px; height: 20px;" />
+                            <span style="color: var(--neutral-foreground-hint);">Responding...</span>
+                        }
+                        <FluentButton Appearance="Appearance.Accent"
+                                      IconStart="@(new Icons.Regular.Size16.Send())"
+                                      OnClick="SendMessage"
+                                      Disabled="@(_isStreaming || string.IsNullOrWhiteSpace(_inputText))">
+                            Send
+                        </FluentButton>
+                    </FluentStack>
+                </div>
+            </div>
+        </FluentStack>
+    }
+</FluentStack>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private string? _projectName;
+    private string? _errorMessage;
+    private ConversationSession? _conversation;
+    private IReadOnlyList<AgentTaskInfo> _agentTasks = Array.Empty<AgentTaskInfo>();
+    private string _inputText = string.Empty;
+    private bool _isStreaming;
+    private bool _disposed;
+    private System.Threading.Timer? _pollingTimer;
+    private CancellationTokenSource _streamingCts = new();
+    private ElementReference _scrollAnchor;
+    private IJSObjectReference? _jsModule;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/chat-projects");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            return;
+        }
+
+        var accessToken = UserSession.AccessToken ?? string.Empty;
+        var isBimManager = await RoleService.IsBimManagerAsync(ProjectId, accessToken);
+        if (!isBimManager)
+        {
+            NavigationManager.NavigateTo("/chat-projects?error=unauthorized");
+            return;
+        }
+
+        await LoadProjectNameAsync();
+
+        var userId = UserSession.UserEmail ?? UserSession.UserName ?? "unknown";
+        _conversation = await ConversationService.GetOrCreateConversationAsync(ProjectId, userId);
+        _agentTasks = await TaskService.GetTasksByConversationAsync(_conversation.ConversationId);
+
+        _pollingTimer = new System.Threading.Timer(async _ =>
+        {
+            if (_disposed || _conversation == null) return;
+            try
+            {
+                _agentTasks = await TaskService.GetTasksByConversationAsync(_conversation.ConversationId);
+                await InvokeAsync(StateHasChanged);
+            }
+            catch (ObjectDisposedException) { }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"Task poll error: {ex.Message}");
+            }
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+    }
+
+    protected override async Task OnAfterRenderAsync(bool firstRender)
+    {
+        if (firstRender)
+        {
+            _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
+                "./Components/Pages/Chat.razor.js");
+
+            if (_conversation != null && _conversation.Messages.Count > 0)
+            {
+                await ScrollToBottomAsync();
+            }
+        }
+    }
+
+    private async Task LoadProjectNameAsync()
+    {
+        try
+        {
+            var accessToken = UserSession.AccessToken ?? string.Empty;
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
+            if (hubs.Data == null) return;
+
+            foreach (var hub in hubs.Data)
+            {
+                var hubId = hub.Id ?? string.Empty;
+                if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)) continue;
+
+                try
+                {
+                    var projects = await DataManagementClient.GetHubProjectsAsync(
+                        accessToken: accessToken,
+                        hubId: hubId);
+                    var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                    if (project != null)
+                    {
+                        _projectName = project.Attributes?.Name ?? "Unknown Project";
+                        return;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error loading project name: {ex.Message}");
+        }
+    }
+
+    private async Task HandleKeyDown(KeyboardEventArgs e)
+    {
+        if (e.Key == "Enter" && !e.ShiftKey)
+        {
+            await SendMessage();
+        }
+    }
+
+    private async Task SendMessage()
+    {
+        if (_conversation == null || _isStreaming || string.IsNullOrWhiteSpace(_inputText))
+            return;
+
+        var text = _inputText.Trim();
+        _inputText = string.Empty;
+
+        var userMessage = new ConversationMessage
+        {
+            Role = "user",
+            Content = text,
+            Timestamp = DateTime.UtcNow
+        };
+        _conversation.Messages.Add(userMessage);
+        await ConversationService.AddMessageAsync(_conversation.ConversationId, userMessage);
+
+        var assistantMessage = new ConversationMessage
+        {
+            Role = "assistant",
+            Content = string.Empty,
+            Timestamp = DateTime.UtcNow
+        };
+        _conversation.Messages.Add(assistantMessage);
+
+        _isStreaming = true;
+        await InvokeAsync(StateHasChanged);
+        await ScrollToBottomAsync();
+
+        _streamingCts.Dispose();
+        _streamingCts = new CancellationTokenSource();
+
+        try
+        {
+            await foreach (var token in ChatService.StreamResponseAsync(_conversation.Messages, _streamingCts.Token))
+            {
+                assistantMessage.Content += token;
+                await InvokeAsync(StateHasChanged);
+                await ScrollToBottomAsync();
+            }
+        }
+        catch (OperationCanceledException) { }
+        catch (Exception ex)
+        {
+            assistantMessage.Content = $"[Error: {ex.Message}]";
+        }
+        finally
+        {
+            assistantMessage.Timestamp = DateTime.UtcNow;
+            await ConversationService.AddMessageAsync(_conversation.ConversationId, assistantMessage);
+            _isStreaming = false;
+            await InvokeAsync(StateHasChanged);
+            await ScrollToBottomAsync();
+        }
+    }
+
+    private async Task ScrollToBottomAsync()
+    {
+        if (_jsModule == null) return;
+        try
+        {
+            await _jsModule.InvokeVoidAsync("scrollIntoView", _scrollAnchor);
+        }
+        catch (JSDisconnectedException) { }
+        catch (Exception) { }
+    }
+
+    private static Appearance GetTaskBadgeAppearance(AgentTaskStatus status) => status switch
+    {
+        AgentTaskStatus.Completed => Appearance.Accent,
+        AgentTaskStatus.Failed => Appearance.Outline,
+        AgentTaskStatus.Running => Appearance.Lightweight,
+        _ => Appearance.Neutral
+    };
+
+    public async ValueTask DisposeAsync()
+    {
+        _disposed = true;
+        _pollingTimer?.Dispose();
+        try
+        {
+            _streamingCts.Cancel();
+        }
+        catch (ObjectDisposedException) { }
+        _streamingCts.Dispose();
+
+        if (_jsModule != null)
+        {
+            try
+            {
+                await _jsModule.DisposeAsync();
+            }
+            catch (JSDisconnectedException) { }
+        }
+    }
+}
