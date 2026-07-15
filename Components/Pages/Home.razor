@@ -91,6 +91,21 @@
                     </FluentButton>
                 </FluentStack>
             </FluentCard>
+
+            <FluentCard Style="max-width: 400px; padding: 24px;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.ChatMultiple())" Color="Color.Accent" />
+                    <h3>AI Agents Chat</h3>
+                    <p style="color: var(--neutral-foreground-hint);">
+                        Chat with AI agents to automate BIM tasks on your projects.
+                    </p>
+                    <FluentButton Appearance="Appearance.Accent"
+                                 IconStart="@(new Icons.Regular.Size20.ChatMultiple())"
+                                 OnClick="@(() => NavigationManager.NavigateTo("/chat-projects"))">
+                        AI Agents Chat
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
         </FluentStack>
     }
 </FluentStack>
