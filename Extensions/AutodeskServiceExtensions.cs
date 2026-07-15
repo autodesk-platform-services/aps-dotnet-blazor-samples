@@ -1,3 +1,4 @@
+using ApsSamples.Models;
 using ApsSamples.Services;
 using Autodesk.DataManagement;
 using Autodesk.Forge.DesignAutomation;
@@ -15,6 +16,8 @@ public static class AutodeskServiceExtensions
             options.Cookie.HttpOnly = true;
             options.Cookie.IsEssential = true;
         });
+
+        services.Configure<AgentOptions>(configuration.GetSection("Agent"));
 
         services.AddAutodeskServices(configuration);
         services.AddDesignAutomation(configuration);
