@@ -79,15 +79,15 @@
 
             <FluentCard Style="max-width: 400px; padding: 24px;">
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.Eye())" Color="Color.Accent" />
-                    <h3>View Models</h3>
+                    <FluentIcon Value="@(new Icons.Regular.Size48.Cube())" Color="Color.Accent" />
+                    <h3>Model Viewer</h3>
                     <p style="color: var(--neutral-foreground-hint);">
-                        View Revit cloud models using the APS Viewer.
+                        View Revit Cloud Models using the APS Viewer and JS Interop.
                     </p>
                     <FluentButton Appearance="Appearance.Accent"
-                                 IconStart="@(new Icons.Regular.Size20.Eye())"
+                                  IconStart="@(new Icons.Regular.Size20.Cube())"
                                  OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
-                        View Models
+                        Model Viewer
                     </FluentButton>
                 </FluentStack>
             </FluentCard>
@@ -95,14 +95,14 @@
             <FluentCard Style="max-width: 400px; padding: 24px;">
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
                     <FluentIcon Value="@(new Icons.Regular.Size48.ChatMultiple())" Color="Color.Accent" />
-                    <h3>AI Agents Chat</h3>
+                    <h3>Assistants</h3>
                     <p style="color: var(--neutral-foreground-hint);">
-                        Chat with AI agents to automate BIM tasks on your projects.
+                        Chat with AI Assistants to automate BIM tasks on your projects.
                     </p>
                     <FluentButton Appearance="Appearance.Accent"
                                  IconStart="@(new Icons.Regular.Size20.ChatMultiple())"
                                  OnClick="@(() => NavigationManager.NavigateTo("/chat-projects"))">
-                        AI Agents Chat
+                        Assistants
                     </FluentButton>
                 </FluentStack>
             </FluentCard>
