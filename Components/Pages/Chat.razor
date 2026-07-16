@@ -1,8 +1,7 @@
 @page "/{ProjectId}/chat"
 @using ApsSamples.Models
 @using ApsSamples.Services
-@using Autodesk.DataManagement
-@using Autodesk.DataManagement.Model
+@using Autodesk.Construction.AccountAdmin
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
@@ -10,7 +9,7 @@
 @inject IAgentChatService ChatService
 @inject IAgentConversationService ConversationService
 @inject IAgentTaskService TaskService
-@inject DataManagementClient DataManagementClient
+@inject AdminClient AdminClient
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -163,7 +162,7 @@
 
                 <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
                     <FluentTextArea @bind-Value="_inputText"
-                                    @bind-Value:event="oninput"
+                                    Immediate="true"
                                     Placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
                                     Rows="3"
                                     Style="width: 100%;"
@@ -272,31 +271,14 @@
         try
         {
             var accessToken = UserSession.AccessToken ?? string.Empty;
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
-            if (hubs.Data == null) return;
 
-            foreach (var hub in hubs.Data)
-            {
-                var hubId = hub.Id ?? string.Empty;
-                if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)) continue;
+            // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
+            var accountProjectId = ProjectId!.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+                ? ProjectId[2..]
+                : ProjectId;
 
-                try
-                {
-                    var projects = await DataManagementClient.GetHubProjectsAsync(
-                        accessToken: accessToken,
-                        hubId: hubId);
-                    var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                    if (project != null)
-                    {
-                        _projectName = project.Attributes?.Name ?? "Unknown Project";
-                        return;
-                    }
-                }
-                catch
-                {
-                    continue;
-                }
-            }
+            var project = await AdminClient.GetProjectAsync(projectId: accountProjectId, accessToken: accessToken);
+            _projectName = project?.Name ?? "Unknown Project";
         }
         catch (Exception ex)
         {
