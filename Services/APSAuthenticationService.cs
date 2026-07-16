@@ -25,13 +25,12 @@ public class APSAuthenticationService : IAPSAuthenticationService
     public string ClientSecret { get; }
     public string? CallbackUrl { get; }
 
-    public APSAuthenticationService(string clientId, string clientSecret, string? callbackUrl = null)
+    public APSAuthenticationService(AuthenticationClient authClient, string clientId, string clientSecret, string? callbackUrl = null)
     {
         ClientId = clientId ?? throw new ArgumentNullException(nameof(clientId));
         ClientSecret = clientSecret ?? throw new ArgumentNullException(nameof(clientSecret));
         CallbackUrl = callbackUrl;
-        var sdkManager = SdkManagerBuilder.Create().Build();
-        _authClient = new AuthenticationClient(sdkManager);
+        _authClient = authClient;
         _tokenExpiration = DateTime.MinValue;
     }
 
