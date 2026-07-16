@@ -57,7 +57,14 @@ public class AgentConversationService : IAgentConversationService
             return;
         }
 
-        session.Messages.Add(message);
+        // Callers (e.g. Chat.razor) append to the cached session's Messages list directly for
+        // immediate UI feedback before persisting, since GetOrCreateConversationAsync hands out
+        // the same in-memory instance. Guard against adding the same message twice.
+        if (!session.Messages.Contains(message))
+        {
+            session.Messages.Add(message);
+        }
+
         await SaveToFileAsync();
     }
 
