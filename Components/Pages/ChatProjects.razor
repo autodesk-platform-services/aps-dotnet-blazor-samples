@@ -129,7 +129,7 @@
             var userId = UserSession.UserId ?? string.Empty;
 
             var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
-            var hubsList = hubs.Data?.ToList() ?? new List<HubData>();
+            var hubsList = hubs.Data?.Where(h => h.Attributes?.Region == Region.US).ToList() ?? new List<HubData>();
 
             foreach (var hub in hubsList)
             {
@@ -143,17 +143,12 @@
                         accessToken: accessToken,
                         hubId: hubId);
 
-                    var projectsList = projects.Data?.ToList() ?? new List<ProjectData>();
+                    var projectsList = projects.Data?.Where(p => p.Attributes?.Extension?.Data["projectType"].ToString() == "ACC").ToList() ?? new List<ProjectData>();
 
                     foreach (var project in projectsList)
                     {
                         var projectId = project.Id ?? string.Empty;
                         var projectName = project.Attributes?.Name ?? "Unknown Project";
-
-                        if (!projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
-                        {
-                            continue;
-                        }
 
                         if (projectName.Contains("Component Library", StringComparison.OrdinalIgnoreCase))
                         {
