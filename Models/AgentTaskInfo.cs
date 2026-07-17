@@ -12,4 +12,5 @@ public class AgentTaskInfo
     public string? ProgressDetail { get; set; }
     public string? ErrorDetail { get; set; }
     public string? WebhookHookId { get; set; }
+    public string? WebhookTargetFileName { get; set; }
 }

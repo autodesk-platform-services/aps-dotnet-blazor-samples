@@ -12,8 +12,11 @@ public class WebhooksController(
     IAgentConversationService conversationService,
     ILogger<WebhooksController> logger) : ControllerBase
 {
-    [HttpPost("model-publish")]
-    public async Task<IActionResult> ModelPublish([FromBody] JsonElement body)
+    // dm.version.added is scoped by folder, not by item, so it fires for every new version
+    // added anywhere in that folder - not just the model our task is waiting on. Filter by the
+    // event's source file name and ignore anything that doesn't match our target model.
+    [HttpPost("version-added")]
+    public async Task<IActionResult> VersionAdded([FromBody] JsonElement body)
     {
         // Always acknowledge quickly, whether or not we can match the notification to a
         // tracked task - Autodesk retries/disables hooks that don't get a fast 200 response.
@@ -25,7 +28,7 @@ public class WebhooksController(
 
             if (string.IsNullOrEmpty(hookId))
             {
-                logger.LogWarning("Received model-publish webhook without a hookId");
+                logger.LogWarning("Received dm.version.added webhook without a hookId");
                 return Ok();
             }
 
@@ -36,37 +39,37 @@ public class WebhooksController(
                 return Ok();
             }
 
-            var succeeded = !(body.TryGetProperty("payload", out var payload) &&
-                payload.TryGetProperty("status", out var statusProp) &&
-                string.Equals(statusProp.GetString(), "failed", StringComparison.OrdinalIgnoreCase));
+            var sourceFileName = body.TryGetProperty("payload", out var payload) &&
+                payload.TryGetProperty("sourceFileName", out var sourceFileNameProp)
+                ? sourceFileNameProp.GetString()
+                : null;
 
-            task.Status = succeeded ? AgentTaskStatus.Completed : AgentTaskStatus.Failed;
+            if (!string.IsNullOrEmpty(sourceFileName) &&
+                !string.IsNullOrEmpty(task.WebhookTargetFileName) &&
+                !string.Equals(sourceFileName, task.WebhookTargetFileName, StringComparison.OrdinalIgnoreCase))
+            {
+                logger.LogInformation("Ignoring dm.version.added for '{SourceFileName}', task {TaskId} is waiting on '{TargetFileName}'",
+                    sourceFileName, task.TaskId, task.WebhookTargetFileName);
+                return Ok();
+            }
+
+            task.Status = AgentTaskStatus.Completed;
             task.CompletedAt = DateTime.UtcNow;
-            if (succeeded)
-            {
-                task.ProgressDetail = "Model published successfully.";
-            }
-            else
-            {
-                task.ErrorDetail = "Model publish failed.";
-            }
-
+            task.ProgressDetail = "Model published successfully.";
             await taskService.UpdateTaskAsync(task);
 
             await conversationService.AddMessageAsync(task.ConversationId, new ConversationMessage
             {
                 Role = "assistant",
-                Content = succeeded
-                    ? $"✅ **{task.Name}** — the model was published successfully."
-                    : $"⚠️ **{task.Name}** — the model publish failed.",
+                Content = $"✅ **{task.Name}** — the model was published successfully.",
                 Timestamp = DateTime.UtcNow
             });
 
-            logger.LogInformation("Recorded model-publish webhook for task {TaskId}, succeeded={Succeeded}", task.TaskId, succeeded);
+            logger.LogInformation("Recorded dm.version.added webhook for task {TaskId}", task.TaskId);
         }
         catch (Exception ex)
         {
-            logger.LogError(ex, "Error handling model-publish webhook");
+            logger.LogError(ex, "Error handling dm.version.added webhook");
         }
 
         return Ok();

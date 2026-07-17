@@ -98,7 +98,7 @@ namespace ApsSamples.Tools
             if (string.IsNullOrEmpty(callbackUrl))
             {
                 return "Cannot subscribe to publish notifications: no Webhooks:CallbackUrl is configured for this app. " +
-                    "A publicly reachable HTTPS URL pointing at /api/webhooks/model-publish must be set in appsettings.json.";
+                    "A publicly reachable HTTPS URL pointing at /api/webhooks/version-added must be set in appsettings.json.";
             }
 
             var accessToken = session.AccessToken ?? string.Empty;
@@ -124,8 +124,8 @@ namespace ApsSamples.Tools
             };
 
             var response = await webhooksClient.CreateSystemEventHookAsync(
-                Systems.AdskC4r,
-                Events.ModelPublish,
+                Systems.Data,
+                Events.DmVersionAdded,
                 hookPayload,
                 accessToken: accessToken);
 
@@ -148,6 +148,7 @@ namespace ApsSamples.Tools
             task.Status = AgentTaskStatus.Running;
             task.ProgressDetail = "Waiting for the model publish to complete.";
             task.WebhookHookId = hookId;
+            task.WebhookTargetFileName = modelName;
             await taskService.UpdateTaskAsync(task);
 
             return $"Subscribed to publish notifications for '{modelName}'. I'll let you know here once the publish completes.";
