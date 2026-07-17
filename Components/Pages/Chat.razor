@@ -2,6 +2,7 @@
 @using ApsSamples.Models
 @using ApsSamples.Services
 @using Autodesk.Construction.AccountAdmin
+@using Markdig
 @using Microsoft.AspNetCore.Components.Web
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
@@ -22,7 +23,6 @@
         max-width: 80%;
         padding: 10px 14px;
         border-radius: 12px;
-        white-space: pre-wrap;
         word-wrap: break-word;
     }
 
@@ -31,6 +31,7 @@
         color: var(--foreground-on-accent-rest);
         align-self: flex-end;
         border-bottom-right-radius: 4px;
+        white-space: pre-wrap;
     }
 
     .chat-assistant-bubble {
@@ -38,6 +39,43 @@
         color: var(--neutral-foreground-rest);
         align-self: flex-start;
         border-bottom-left-radius: 4px;
+    }
+
+    .chat-assistant-bubble > :first-child {
+        margin-top: 0;
+    }
+
+    .chat-assistant-bubble > :last-child {
+        margin-bottom: 0;
+    }
+
+    .chat-assistant-bubble pre {
+        background: var(--neutral-layer-2);
+        border-radius: 6px;
+        padding: 8px 10px;
+        overflow-x: auto;
+    }
+
+    .chat-assistant-bubble code {
+        font-family: var(--body-font, monospace);
+        background: var(--neutral-layer-2);
+        border-radius: 4px;
+        padding: 1px 4px;
+    }
+
+    .chat-assistant-bubble pre code {
+        background: none;
+        padding: 0;
+    }
+
+    .chat-assistant-bubble table {
+        border-collapse: collapse;
+    }
+
+    .chat-assistant-bubble th,
+    .chat-assistant-bubble td {
+        border: 1px solid var(--neutral-stroke-rest);
+        padding: 4px 8px;
     }
 
     .chat-message-row {
@@ -151,7 +189,14 @@
                             var isUser = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase);
                             <div class="chat-message-row" style="align-items: @(isUser ? "flex-end" : "flex-start");">
                                 <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
-                                    @msg.Content
+                                    @if (isUser)
+                                    {
+                                        @msg.Content
+                                    }
+                                    else
+                                    {
+                                        @RenderMarkdown(msg.Content)
+                                    }
                                 </div>
                                 <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
                             </div>
@@ -192,6 +237,14 @@
 </FluentStack>
 
 @code {
+    private static readonly MarkdownPipeline MarkdownPipeline = new MarkdownPipelineBuilder()
+        .UseAdvancedExtensions()
+        .DisableHtml()
+        .Build();
+
+    private static MarkupString RenderMarkdown(string content) =>
+        (MarkupString)Markdown.ToHtml(content, MarkdownPipeline);
+
     [Parameter]
     public string? ProjectId { get; set; }
 
