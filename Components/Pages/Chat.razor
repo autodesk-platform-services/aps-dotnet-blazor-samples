@@ -274,6 +274,10 @@
             return;
         }
 
+        // Give the agent's tools the project this page is scoped to, so the LLM never has to
+        // supply (or guess) a project ID itself.
+        ChatService.SetProjectContext(ProjectId);
+
         var accessToken = UserSession.AccessToken ?? string.Empty;
         var accountAdminUserId = UserSession.UserId ?? string.Empty;
         var isBimManager = await RoleService.IsBimManagerAsync(ProjectId, accountAdminUserId, accessToken);

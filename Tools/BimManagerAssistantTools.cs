@@ -19,10 +19,15 @@ namespace ApsSamples.Tools
         IAgentTaskService taskService,
         IConfiguration configuration)
     {
-        [Description("Lists the Revit (.rvt) models found in a project's folders, recursively. Returns each model's name and item ID (needed to publish it).")]
-        public async Task<List<RevitModelInfo>> ListRevitModelsAsync(
-            [Description("Data Management project ID, including the 'b.' hub prefix (e.g. 'b.xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx')")] string projectId)
+        // Set by the host page (Chat.razor) for the project the user is currently chatting about.
+        // Tools read this instead of taking a projectId parameter, so the agent can't scope a
+        // call to the wrong project - it never sees or chooses a project ID at all.
+        public string? ProjectId { get; set; }
+
+        [Description("Lists the Revit (.rvt) models found in the current project's folders, recursively. Returns each model's name and item ID (needed to publish it).")]
+        public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
         {
+            var projectId = RequireProjectId();
             var accessToken = session.AccessToken ?? string.Empty;
             var hubId = await GetHubIdAsync(projectId, accessToken);
 
@@ -44,11 +49,11 @@ namespace ApsSamples.Tools
             return models.OrderBy(m => m.Name).ToList();
         }
 
-        [Description("Publishes (syncs) a Revit cloud-worksharing model in the project so the latest cloud model becomes available as a new version. Call ListRevitModelsAsync first to get the model's item ID.")]
+        [Description("Publishes (syncs) a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Call ListRevitModelsAsync first to get the model's item ID.")]
         public async Task<string> PublishRevitModelAsync(
-            [Description("Data Management project ID, including the 'b.' hub prefix")] string projectId,
             [Description("Item ID of the Revit model to publish, as returned by ListRevitModelsAsync")] string itemId)
         {
+            var projectId = RequireProjectId();
             var accessToken = session.AccessToken ?? string.Empty;
 
             var publishPayload = new PublishModelPayload
@@ -88,12 +93,12 @@ namespace ApsSamples.Tools
                 : $"Publish command for item {itemId} returned no result.";
         }
 
-        [Description("Subscribes to be notified in this chat when a Revit model finishes publishing. Call this after PublishRevitModelAsync so the user gets told once the publish actually completes (publishing happens asynchronously and can take a while).")]
+        [Description("Subscribes to be notified in this chat when a Revit model in the current project finishes publishing. Call this after PublishRevitModelAsync so the user gets told once the publish actually completes (publishing happens asynchronously and can take a while).")]
         public async Task<string> NotifyOnModelPublishAsync(
-            [Description("Data Management project ID, including the 'b.' hub prefix")] string projectId,
             [Description("Item ID of the Revit model being published, as returned by ListRevitModelsAsync")] string itemId,
             [Description("Display name of the model, used in the notification message")] string modelName)
         {
+            var projectId = RequireProjectId();
             var callbackUrl = configuration["Webhooks:CallbackUrl"];
             if (string.IsNullOrEmpty(callbackUrl))
             {
@@ -152,6 +157,16 @@ namespace ApsSamples.Tools
             await taskService.UpdateTaskAsync(task);
 
             return $"Subscribed to publish notifications for '{modelName}'. I'll let you know here once the publish completes.";
+        }
+
+        private string RequireProjectId()
+        {
+            if (string.IsNullOrEmpty(ProjectId))
+            {
+                throw new InvalidOperationException("No active project is set for this chat session.");
+            }
+
+            return ProjectId;
         }
 
         private async Task<string> GetHubIdAsync(string projectId, string accessToken)
