@@ -11,4 +11,5 @@ public class AgentTaskInfo
     public DateTime? CompletedAt { get; set; }
     public string? ProgressDetail { get; set; }
     public string? ErrorDetail { get; set; }
+    public string? WebhookHookId { get; set; }
 }

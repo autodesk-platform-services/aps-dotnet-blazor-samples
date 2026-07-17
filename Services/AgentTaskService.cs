@@ -61,6 +61,12 @@ public class AgentTaskService : IAgentTaskService
         return Task.FromResult(result);
     }
 
+    public Task<AgentTaskInfo?> GetTaskByWebhookHookIdAsync(string hookId)
+    {
+        var task = _tasksCache.Values.FirstOrDefault(t => t.WebhookHookId == hookId);
+        return Task.FromResult(task);
+    }
+
     private async Task SaveToFileAsync()
     {
         await _fileLock.WaitAsync();

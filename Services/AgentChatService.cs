@@ -15,12 +15,14 @@ public class AgentChatService : IAgentChatService
     {
         _chatClient = chatClient.AsAIAgent(
             instructions: "You are a BIM Manager assistant. Keep your answers brief. " +
-                "You can list the Revit models in a project and publish (sync) a Revit cloud-worksharing model.",
+                "You can list the Revit models in a project, publish (sync) a Revit cloud-worksharing model, " +
+                "and subscribe to be notified once a publish completes - call the notification tool right after publishing.",
             name: "BimManagerAssistant",
             tools:
             [
                 AIFunctionFactory.Create(bimManagerAssistantTools.ListRevitModelsAsync),
-                AIFunctionFactory.Create(bimManagerAssistantTools.PublishRevitModelAsync)
+                AIFunctionFactory.Create(bimManagerAssistantTools.PublishRevitModelAsync),
+                AIFunctionFactory.Create(bimManagerAssistantTools.NotifyOnModelPublishAsync)
             ]);
     }
 

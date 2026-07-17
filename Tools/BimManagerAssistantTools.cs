@@ -1,15 +1,23 @@
 using System.ComponentModel;
+using System.Text.Json;
+using ApsSamples.Models;
 using ApsSamples.Services;
 using Autodesk.Construction.AccountAdmin;
 using Autodesk.DataManagement;
 using Autodesk.DataManagement.Model;
+using Autodesk.Webhooks;
+using Autodesk.Webhooks.Model;
 
 namespace ApsSamples.Tools
 {
     public class BimManagerAssistantTools(
         DataManagementClient dataManagementClient,
         AdminClient adminClient,
-        IUserSessionService session)
+        WebhooksClient webhooksClient,
+        IUserSessionService session,
+        IAgentConversationService conversationService,
+        IAgentTaskService taskService,
+        IConfiguration configuration)
     {
         [Description("Lists the Revit (.rvt) models found in a project's folders, recursively. Returns each model's name and item ID (needed to publish it).")]
         public async Task<List<RevitModelInfo>> ListRevitModelsAsync(
@@ -78,6 +86,71 @@ namespace ApsSamples.Tools
             return result != null
                 ? $"Publish command submitted for item {itemId} (command id: {result.Id})."
                 : $"Publish command for item {itemId} returned no result.";
+        }
+
+        [Description("Subscribes to be notified in this chat when a Revit model finishes publishing. Call this after PublishRevitModelAsync so the user gets told once the publish actually completes (publishing happens asynchronously and can take a while).")]
+        public async Task<string> NotifyOnModelPublishAsync(
+            [Description("Data Management project ID, including the 'b.' hub prefix")] string projectId,
+            [Description("Item ID of the Revit model being published, as returned by ListRevitModelsAsync")] string itemId,
+            [Description("Display name of the model, used in the notification message")] string modelName)
+        {
+            var callbackUrl = configuration["Webhooks:CallbackUrl"];
+            if (string.IsNullOrEmpty(callbackUrl))
+            {
+                return "Cannot subscribe to publish notifications: no Webhooks:CallbackUrl is configured for this app. " +
+                    "A publicly reachable HTTPS URL pointing at /api/webhooks/model-publish must be set in appsettings.json.";
+            }
+
+            var accessToken = session.AccessToken ?? string.Empty;
+            var userId = session.UserEmail ?? session.UserName ?? "unknown";
+
+            var hubId = await GetHubIdAsync(projectId, accessToken);
+            var folder = await dataManagementClient.GetItemParentFolderAsync(
+                projectId: projectId,
+                itemId: itemId,
+                accessToken: accessToken);
+            var folderId = folder?.Data?.Id;
+            if (string.IsNullOrEmpty(folderId))
+            {
+                return $"Could not resolve the parent folder for item {itemId}; cannot subscribe to publish notifications.";
+            }
+
+            var hookPayload = new HookPayload
+            {
+                CallbackUrl = callbackUrl,
+                HubId = hubId,
+                ProjectId = projectId,
+                Scope = new Dictionary<string, object> { ["folder"] = folderId }
+            };
+
+            var response = await webhooksClient.CreateSystemEventHookAsync(
+                Systems.AdskC4r,
+                Events.ModelPublish,
+                hookPayload,
+                accessToken: accessToken);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                return $"Failed to create the publish webhook (HTTP {(int)response.StatusCode}).";
+            }
+
+            var responseBody = await response.Content.ReadAsStringAsync();
+            var hookId = JsonSerializer.Deserialize<HookDetails>(responseBody,
+                new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })?.HookId;
+
+            if (string.IsNullOrEmpty(hookId))
+            {
+                return "Publish webhook was created but its ID could not be read, so I won't be able to notify you when it fires.";
+            }
+
+            var conversation = await conversationService.GetOrCreateConversationAsync(projectId, userId);
+            var task = await taskService.CreateTaskAsync(conversation.ConversationId, projectId, $"Publish notification: {modelName}");
+            task.Status = AgentTaskStatus.Running;
+            task.ProgressDetail = "Waiting for the model publish to complete.";
+            task.WebhookHookId = hookId;
+            await taskService.UpdateTaskAsync(task);
+
+            return $"Subscribed to publish notifications for '{modelName}'. I'll let you know here once the publish completes.";
         }
 
         private async Task<string> GetHubIdAsync(string projectId, string accessToken)
