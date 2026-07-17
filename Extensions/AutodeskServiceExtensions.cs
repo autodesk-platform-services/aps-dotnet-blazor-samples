@@ -6,6 +6,7 @@ using Autodesk.Construction.AccountAdmin;
 using Autodesk.DataManagement;
 using Autodesk.Forge.DesignAutomation;
 using Autodesk.SDKManager;
+using Autodesk.Webhooks;
 using Microsoft.Extensions.AI;
 using OllamaSharp;
 
@@ -78,6 +79,7 @@ public static class AutodeskServiceExtensions
         // Register Data Management API client
         services.AddScoped<DataManagementClient>();
         services.AddScoped<AdminClient>();
+        services.AddScoped<WebhooksClient>();
 
         return services;
     }
