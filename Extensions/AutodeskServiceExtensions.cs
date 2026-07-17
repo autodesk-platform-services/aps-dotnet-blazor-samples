@@ -1,5 +1,6 @@
 using ApsSamples.Models;
 using ApsSamples.Services;
+using ApsSamples.Tools;
 using Autodesk.Authentication;
 using Autodesk.Construction.AccountAdmin;
 using Autodesk.DataManagement;
@@ -32,6 +33,7 @@ public static class AutodeskServiceExtensions
         services.AddScoped<INamingStandardsService, NamingStandardsService>();
         services.AddScoped<IRevitAutomationService, RevitAutomationService>();
         services.AddScoped<RevitAutomationTools>();
+        services.AddScoped<BimManagerAssistantTools>();
         services.AddScoped<IProjectRoleService, ProjectRoleService>();
 
         services.AddSingleton<ICreationJobStatusService, CreationJobStatusService>();

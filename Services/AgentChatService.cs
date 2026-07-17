@@ -1,8 +1,8 @@
 using ApsSamples.Models;
+using ApsSamples.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Options;
-using System.ComponentModel;
 using System.Runtime.CompilerServices;
 
 namespace ApsSamples.Services;
@@ -11,16 +11,18 @@ public class AgentChatService : IAgentChatService
 {
     private readonly AIAgent _chatClient;
 
-    public AgentChatService(IChatClient chatClient, IOptions<AgentOptions> options)
+    public AgentChatService(IChatClient chatClient, IOptions<AgentOptions> options, BimManagerAssistantTools bimManagerAssistantTools)
     {
-        _chatClient = chatClient.AsAIAgent(instructions: "You are a friendly assistant. Keep your answers brief.",
-        name: "HelloAgent",
-        tools: [AIFunctionFactory.Create(GetWeather)]);
+        _chatClient = chatClient.AsAIAgent(
+            instructions: "You are a BIM Manager assistant. Keep your answers brief. " +
+                "You can list the Revit models in a project and publish (sync) a Revit cloud-worksharing model.",
+            name: "BimManagerAssistant",
+            tools:
+            [
+                AIFunctionFactory.Create(bimManagerAssistantTools.ListRevitModelsAsync),
+                AIFunctionFactory.Create(bimManagerAssistantTools.PublishRevitModelAsync)
+            ]);
     }
-
-    [Description("Get the weather for a given location.")]
-    static string GetWeather([Description("The location to get the weather for.")] string location)
-        => $"The weather in {location} is cloudy with a high of 15°C.";
 
     public async IAsyncEnumerable<string> StreamResponseAsync(
             IList<ConversationMessage> history,
