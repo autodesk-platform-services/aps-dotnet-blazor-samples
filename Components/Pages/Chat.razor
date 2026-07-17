@@ -163,7 +163,7 @@
                 <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
                     <FluentTextArea @bind-Value="_inputText"
                                     Immediate="true"
-                                    Placeholder="Type a message... (Enter to send, Shift+Enter for newline)"
+                                    Placeholder="Type a message..."
                                     Rows="3"
                                     Style="width: 100%;"
                                     Disabled="_isStreaming"
@@ -291,6 +291,8 @@
         if (e.Key == "Enter" && !e.ShiftKey)
         {
             await SendMessage();
+            _inputText = string.Empty;
+            await InvokeAsync(StateHasChanged);
         }
     }
 
