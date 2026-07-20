@@ -29,6 +29,11 @@ public class AgentChatService : IAgentChatService
             ]);
     }
 
+    public void SetHubContext(string hubId)
+    {
+        _bimManagerAssistantTools.HubId = hubId;
+    }
+
     public void SetProjectContext(string projectId)
     {
         _bimManagerAssistantTools.ProjectId = projectId;

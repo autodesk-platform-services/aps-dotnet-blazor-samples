@@ -430,6 +430,13 @@
 
             var project = await AdminClient.GetProjectAsync(projectId: accountProjectId, accessToken: accessToken);
             _projectName = project?.Name ?? "Unknown Project";
+
+            // Give the agent's tools the hub this project belongs to, so they never have to
+            // resolve it themselves via an extra API call.
+            if (!string.IsNullOrEmpty(project?.AccountId))
+            {
+                ChatService.SetHubContext("b." + project.AccountId);
+            }
         }
         catch (Exception ex)
         {

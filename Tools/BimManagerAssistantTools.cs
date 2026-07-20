@@ -2,7 +2,6 @@ using System.ComponentModel;
 using System.Text.Json;
 using ApsSamples.Models;
 using ApsSamples.Services;
-using Autodesk.Construction.AccountAdmin;
 using Autodesk.DataManagement;
 using Autodesk.DataManagement.Model;
 using Autodesk.Webhooks;
@@ -12,16 +11,16 @@ namespace ApsSamples.Tools
 {
     public class BimManagerAssistantTools(
         DataManagementClient dataManagementClient,
-        AdminClient adminClient,
         WebhooksClient webhooksClient,
         IUserSessionService session,
         IAgentTaskService taskService,
         IConfiguration configuration)
     {
-        // Set by the host page (Chat.razor) for the project/conversation the user is currently
-        // chatting in. Tools read these instead of taking projectId/conversationId parameters, so
-        // the agent can't scope a call to the wrong project or conversation - it never sees or
-        // chooses either at all.
+        // Set by the host page (Chat.razor) for the hub/project/conversation the user is currently
+        // chatting in. Tools read these instead of taking hubId/projectId/conversationId
+        // parameters, so the agent can't scope a call to the wrong one and never has to spend an
+        // API call resolving the hub for a project itself - it's already known.
+        public string? HubId { get; set; }
         public string? ProjectId { get; set; }
         public string? ConversationId { get; set; }
 
@@ -29,8 +28,8 @@ namespace ApsSamples.Tools
         public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
         {
             var projectId = RequireProjectId();
+            var hubId = RequireHubId();
             var accessToken = session.AccessToken ?? string.Empty;
-            var hubId = await GetHubIdAsync(projectId, accessToken);
 
             var models = new List<RevitModelInfo>();
 
@@ -56,6 +55,7 @@ namespace ApsSamples.Tools
             [Description("Display name of the model, used for the task and the completion notification")] string modelName)
         {
             var projectId = RequireProjectId();
+            var hubId = RequireHubId();
             var conversationId = RequireConversationId();
             var accessToken = session.AccessToken ?? string.Empty;
 
@@ -114,7 +114,7 @@ namespace ApsSamples.Tools
             task.ProgressDetail = "Publish command submitted, waiting for it to complete.";
             await taskService.UpdateTaskAsync(task);
 
-            var subscribed = await TrySubscribeToPublishCompletionAsync(task, projectId, itemId, modelName, accessToken);
+            var subscribed = await TrySubscribeToPublishCompletionAsync(task, hubId, projectId, itemId, modelName, accessToken);
 
             return subscribed
                 ? $"Publishing '{modelName}'. I'll let you know here once it completes."
@@ -134,7 +134,7 @@ namespace ApsSamples.Tools
         // Completed/Failed once the publish actually lands, instead of just reflecting that the
         // command was submitted.
         private async Task<bool> TrySubscribeToPublishCompletionAsync(
-            AgentTaskInfo task, string projectId, string itemId, string modelName, string accessToken)
+            AgentTaskInfo task, string hubId, string projectId, string itemId, string modelName, string accessToken)
         {
             var callbackUrl = configuration["Webhooks:CallbackUrl"];
             if (string.IsNullOrEmpty(callbackUrl))
@@ -142,7 +142,6 @@ namespace ApsSamples.Tools
                 return false;
             }
 
-            var hubId = await GetHubIdAsync(projectId, accessToken);
             var folder = await dataManagementClient.GetItemParentFolderAsync(
                 projectId: projectId,
                 itemId: itemId,
@@ -207,15 +206,14 @@ namespace ApsSamples.Tools
             return ConversationId;
         }
 
-        private async Task<string> GetHubIdAsync(string projectId, string accessToken)
+        private string RequireHubId()
         {
-            // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
-            var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
-                ? projectId[2..]
-                : projectId;
+            if (string.IsNullOrEmpty(HubId))
+            {
+                throw new InvalidOperationException("No active hub is set for this chat session.");
+            }
 
-            var project = await adminClient.GetProjectAsync(projectId: accountProjectId, accessToken: accessToken);
-            return "b." + project?.AccountId;
+            return HubId;
         }
 
         private async Task CollectRevitModelsAsync(string projectId, string folderId, string accessToken, List<RevitModelInfo> models)
