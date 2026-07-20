@@ -53,17 +53,20 @@ public class WebhooksController(
                 return Ok();
             }
 
-            task.Status = AgentTaskStatus.Completed;
-            task.CompletedAt = DateTime.UtcNow;
-            task.ProgressDetail = "Model published successfully.";
-            await taskService.UpdateTaskAsync(task);
-
-            await conversationService.AddMessageAsync(task.ConversationId, new ConversationMessage
+            var confirmationMessage = new ConversationMessage
             {
                 Role = "assistant",
                 Content = $"✅ **{task.Name}** — the model was published successfully.",
                 Timestamp = DateTime.UtcNow
-            });
+            };
+
+            task.Status = AgentTaskStatus.Completed;
+            task.CompletedAt = DateTime.UtcNow;
+            task.ProgressDetail = "Model published successfully.";
+            task.RelatedMessageId = confirmationMessage.Id;
+            await taskService.UpdateTaskAsync(task);
+
+            await conversationService.AddMessageAsync(task.ConversationId, confirmationMessage);
 
             logger.LogInformation("Recorded dm.version.added webhook for task {TaskId}", task.TaskId);
         }

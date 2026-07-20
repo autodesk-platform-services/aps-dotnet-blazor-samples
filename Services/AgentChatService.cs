@@ -35,6 +35,11 @@ public class AgentChatService : IAgentChatService
         _bimManagerAssistantTools.ProjectId = projectId;
     }
 
+    public void SetConversationContext(string conversationId)
+    {
+        _bimManagerAssistantTools.ConversationId = conversationId;
+    }
+
     public async IAsyncEnumerable<string> StreamResponseAsync(
             IList<ConversationMessage> history,
             [EnumeratorCancellation] CancellationToken ct = default)

@@ -15,14 +15,15 @@ namespace ApsSamples.Tools
         AdminClient adminClient,
         WebhooksClient webhooksClient,
         IUserSessionService session,
-        IAgentConversationService conversationService,
         IAgentTaskService taskService,
         IConfiguration configuration)
     {
-        // Set by the host page (Chat.razor) for the project the user is currently chatting about.
-        // Tools read this instead of taking a projectId parameter, so the agent can't scope a
-        // call to the wrong project - it never sees or chooses a project ID at all.
+        // Set by the host page (Chat.razor) for the project/conversation the user is currently
+        // chatting in. Tools read these instead of taking projectId/conversationId parameters, so
+        // the agent can't scope a call to the wrong project or conversation - it never sees or
+        // chooses either at all.
         public string? ProjectId { get; set; }
+        public string? ConversationId { get; set; }
 
         [Description("Lists the Revit (.rvt) models found in the current project's folders, recursively. Returns each model's name and item ID (needed to publish it).")]
         public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
@@ -106,8 +107,8 @@ namespace ApsSamples.Tools
                     "A publicly reachable HTTPS URL pointing at /api/webhooks/version-added must be set in appsettings.json.";
             }
 
+            var conversationId = RequireConversationId();
             var accessToken = session.AccessToken ?? string.Empty;
-            var userId = session.UserEmail ?? session.UserName ?? "unknown";
 
             var hubId = await GetHubIdAsync(projectId, accessToken);
             var folder = await dataManagementClient.GetItemParentFolderAsync(
@@ -148,8 +149,7 @@ namespace ApsSamples.Tools
                 return "Publish webhook was created but its ID could not be read, so I won't be able to notify you when it fires.";
             }
 
-            var conversation = await conversationService.GetOrCreateConversationAsync(projectId, userId);
-            var task = await taskService.CreateTaskAsync(conversation.ConversationId, projectId, $"Publish notification: {modelName}");
+            var task = await taskService.CreateTaskAsync(conversationId, projectId, $"Publish notification: {modelName}");
             task.Status = AgentTaskStatus.Running;
             task.ProgressDetail = "Waiting for the model publish to complete.";
             task.WebhookHookId = hookId;
@@ -167,6 +167,16 @@ namespace ApsSamples.Tools
             }
 
             return ProjectId;
+        }
+
+        private string RequireConversationId()
+        {
+            if (string.IsNullOrEmpty(ConversationId))
+            {
+                throw new InvalidOperationException("No active conversation is set for this chat session.");
+            }
+
+            return ConversationId;
         }
 
         private async Task<string> GetHubIdAsync(string projectId, string accessToken)
