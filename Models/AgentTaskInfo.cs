@@ -13,4 +13,5 @@ public class AgentTaskInfo
     public string? ErrorDetail { get; set; }
     public string? WebhookHookId { get; set; }
     public string? WebhookTargetFileName { get; set; }
+    public string? RelatedMessageId { get; set; }
 }

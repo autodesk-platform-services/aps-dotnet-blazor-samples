@@ -61,6 +61,16 @@ public class AgentTaskService : IAgentTaskService
         return Task.FromResult(result);
     }
 
+    public Task<IReadOnlyList<AgentTaskInfo>> GetTasksByProjectAsync(string projectId)
+    {
+        IReadOnlyList<AgentTaskInfo> result = _tasksCache.Values
+            .Where(t => t.ProjectId == projectId)
+            .OrderByDescending(t => t.StartedAt)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
     public Task<AgentTaskInfo?> GetTaskByWebhookHookIdAsync(string hookId)
     {
         var task = _tasksCache.Values.FirstOrDefault(t => t.WebhookHookId == hookId);

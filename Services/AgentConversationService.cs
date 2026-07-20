@@ -22,21 +22,16 @@ public class AgentConversationService : IAgentConversationService
         LoadFromFile();
     }
 
-    public async Task<ConversationSession> GetOrCreateConversationAsync(string projectId, string userId)
+    public async Task<ConversationSession> CreateConversationAsync(string projectId, string userId)
     {
-        var existing = _conversationsCache.Values
-            .FirstOrDefault(c => c.ProjectId == projectId && c.UserId == userId);
-
-        if (existing != null)
-        {
-            return existing;
-        }
-
+        var now = DateTime.UtcNow;
         var session = new ConversationSession
         {
             ConversationId = Guid.NewGuid().ToString(),
             ProjectId = projectId,
             UserId = userId,
+            CreatedAt = now,
+            LastActivityAt = now,
             Messages = new List<ConversationMessage>()
         };
 
@@ -49,6 +44,16 @@ public class AgentConversationService : IAgentConversationService
         return session;
     }
 
+    public Task<IReadOnlyList<ConversationSession>> GetConversationsAsync(string projectId, string userId)
+    {
+        IReadOnlyList<ConversationSession> result = _conversationsCache.Values
+            .Where(c => c.ProjectId == projectId && c.UserId == userId)
+            .OrderByDescending(c => c.LastActivityAt)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
     public async Task AddMessageAsync(string conversationId, ConversationMessage message)
     {
         if (!_conversationsCache.TryGetValue(conversationId, out var session))
@@ -58,13 +63,14 @@ public class AgentConversationService : IAgentConversationService
         }
 
         // Callers (e.g. Chat.razor) append to the cached session's Messages list directly for
-        // immediate UI feedback before persisting, since GetOrCreateConversationAsync hands out
-        // the same in-memory instance. Guard against adding the same message twice.
+        // immediate UI feedback before persisting, since callers hand out the same in-memory
+        // instance. Guard against adding the same message twice.
         if (!session.Messages.Contains(message))
         {
             session.Messages.Add(message);
         }
 
+        session.LastActivityAt = message.Timestamp;
         await SaveToFileAsync();
     }
 
