@@ -50,12 +50,19 @@ namespace ApsSamples.Tools
             return models.OrderBy(m => m.Name).ToList();
         }
 
-        [Description("Publishes (syncs) a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Call ListRevitModelsAsync first to get the model's item ID.")]
+        [Description("Publishes (syncs) a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Automatically tracks the publish as a task (visible in the task panel) and notifies you here once it completes or fails - publishing happens asynchronously and can take a while. Call ListRevitModelsAsync first to get the model's item ID and name.")]
         public async Task<string> PublishRevitModelAsync(
-            [Description("Item ID of the Revit model to publish, as returned by ListRevitModelsAsync")] string itemId)
+            [Description("Item ID of the Revit model to publish, as returned by ListRevitModelsAsync")] string itemId,
+            [Description("Display name of the model, used for the task and the completion notification")] string modelName)
         {
             var projectId = RequireProjectId();
+            var conversationId = RequireConversationId();
             var accessToken = session.AccessToken ?? string.Empty;
+
+            var task = await taskService.CreateTaskAsync(conversationId, projectId, $"Publish: {modelName}");
+            task.Status = AgentTaskStatus.Running;
+            task.ProgressDetail = "Submitting publish command.";
+            await taskService.UpdateTaskAsync(task);
 
             var publishPayload = new PublishModelPayload
             {
@@ -84,31 +91,56 @@ namespace ApsSamples.Tools
                 }
             };
 
-            var result = await dataManagementClient.ExecutePublishModelAsync(
-                projectId: projectId,
-                publishModelPayload: publishPayload,
-                accessToken: accessToken);
+            PublishModel? result;
+            try
+            {
+                result = await dataManagementClient.ExecutePublishModelAsync(
+                    projectId: projectId,
+                    publishModelPayload: publishPayload,
+                    accessToken: accessToken);
+            }
+            catch (Exception ex)
+            {
+                await FailTaskAsync(task, $"Publish command failed: {ex.Message}");
+                return $"Publish command for '{modelName}' failed: {ex.Message}";
+            }
 
-            return result != null
-                ? $"Publish command submitted for item {itemId} (command id: {result.Id})."
-                : $"Publish command for item {itemId} returned no result.";
+            if (result == null)
+            {
+                await FailTaskAsync(task, "Publish command returned no result.");
+                return $"Publish command for '{modelName}' returned no result.";
+            }
+
+            task.ProgressDetail = "Publish command submitted, waiting for it to complete.";
+            await taskService.UpdateTaskAsync(task);
+
+            var subscribed = await TrySubscribeToPublishCompletionAsync(task, projectId, itemId, modelName, accessToken);
+
+            return subscribed
+                ? $"Publishing '{modelName}'. I'll let you know here once it completes."
+                : $"Publishing '{modelName}' (command id: {result.Id}). I couldn't set up a completion notification for it, " +
+                    "so the task will show as failed if it doesn't complete in time.";
         }
 
-        [Description("Subscribes to be notified in this chat when a Revit model in the current project finishes publishing. Call this after PublishRevitModelAsync so the user gets told once the publish actually completes (publishing happens asynchronously and can take a while).")]
-        public async Task<string> NotifyOnModelPublishAsync(
-            [Description("Item ID of the Revit model being published, as returned by ListRevitModelsAsync")] string itemId,
-            [Description("Display name of the model, used in the notification message")] string modelName)
+        private async Task FailTaskAsync(AgentTaskInfo task, string errorDetail)
         {
-            var projectId = RequireProjectId();
+            task.Status = AgentTaskStatus.Failed;
+            task.CompletedAt = DateTime.UtcNow;
+            task.ErrorDetail = errorDetail;
+            await taskService.UpdateTaskAsync(task);
+        }
+
+        // Registers a dm.version.added webhook so the task started above gets marked
+        // Completed/Failed once the publish actually lands, instead of just reflecting that the
+        // command was submitted.
+        private async Task<bool> TrySubscribeToPublishCompletionAsync(
+            AgentTaskInfo task, string projectId, string itemId, string modelName, string accessToken)
+        {
             var callbackUrl = configuration["Webhooks:CallbackUrl"];
             if (string.IsNullOrEmpty(callbackUrl))
             {
-                return "Cannot subscribe to publish notifications: no Webhooks:CallbackUrl is configured for this app. " +
-                    "A publicly reachable HTTPS URL pointing at /api/webhooks/version-added must be set in appsettings.json.";
+                return false;
             }
-
-            var conversationId = RequireConversationId();
-            var accessToken = session.AccessToken ?? string.Empty;
 
             var hubId = await GetHubIdAsync(projectId, accessToken);
             var folder = await dataManagementClient.GetItemParentFolderAsync(
@@ -118,7 +150,7 @@ namespace ApsSamples.Tools
             var folderId = folder?.Data?.Id;
             if (string.IsNullOrEmpty(folderId))
             {
-                return $"Could not resolve the parent folder for item {itemId}; cannot subscribe to publish notifications.";
+                return false;
             }
 
             var hookPayload = new HookPayload
@@ -137,7 +169,7 @@ namespace ApsSamples.Tools
 
             if (!response.IsSuccessStatusCode)
             {
-                return $"Failed to create the publish webhook (HTTP {(int)response.StatusCode}).";
+                return false;
             }
 
             var responseBody = await response.Content.ReadAsStringAsync();
@@ -146,17 +178,13 @@ namespace ApsSamples.Tools
 
             if (string.IsNullOrEmpty(hookId))
             {
-                return "Publish webhook was created but its ID could not be read, so I won't be able to notify you when it fires.";
+                return false;
             }
 
-            var task = await taskService.CreateTaskAsync(conversationId, projectId, $"Publish notification: {modelName}");
-            task.Status = AgentTaskStatus.Running;
-            task.ProgressDetail = "Waiting for the model publish to complete.";
             task.WebhookHookId = hookId;
             task.WebhookTargetFileName = modelName;
             await taskService.UpdateTaskAsync(task);
-
-            return $"Subscribed to publish notifications for '{modelName}'. I'll let you know here once the publish completes.";
+            return true;
         }
 
         private string RequireProjectId()

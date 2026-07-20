@@ -6,13 +6,21 @@ namespace ApsSamples.Services;
 
 public class AgentTaskService : IAgentTaskService
 {
+    // If a task is still waiting on its webhook after this long, something went wrong upstream
+    // (the publish failed silently, the webhook never fired, etc.) - stop waiting and show it as
+    // failed instead of leaving it "in progress" forever.
+    private static readonly TimeSpan WebhookTimeout = TimeSpan.FromMinutes(15);
+
     private readonly ConcurrentDictionary<string, AgentTaskInfo> _tasksCache = new();
+    private readonly ConcurrentDictionary<string, byte> _scheduledTimeouts = new();
+    private readonly IAgentConversationService _conversationService;
     private readonly ILogger<AgentTaskService> _logger;
     private readonly string _filePath;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
 
-    public AgentTaskService(ILogger<AgentTaskService> logger)
+    public AgentTaskService(IAgentConversationService conversationService, ILogger<AgentTaskService> logger)
     {
+        _conversationService = conversationService;
         _logger = logger;
 
         var dataDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data");
@@ -49,6 +57,46 @@ public class AgentTaskService : IAgentTaskService
         await SaveToFileAsync();
 
         _logger.LogInformation("Updated agent task {TaskId}: {Status}", task.TaskId, task.Status);
+
+        if (task.Status == AgentTaskStatus.Running && !string.IsNullOrEmpty(task.WebhookHookId) &&
+            _scheduledTimeouts.TryAdd(task.TaskId, 0))
+        {
+            ScheduleWebhookTimeout(task.TaskId);
+        }
+    }
+
+    private void ScheduleWebhookTimeout(string taskId)
+    {
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(WebhookTimeout);
+
+                if (!_tasksCache.TryGetValue(taskId, out var task) || task.Status != AgentTaskStatus.Running)
+                {
+                    return;
+                }
+
+                task.Status = AgentTaskStatus.Failed;
+                task.CompletedAt = DateTime.UtcNow;
+                task.ErrorDetail = "Timed out waiting for the publish to complete.";
+                await UpdateTaskAsync(task);
+
+                _logger.LogWarning("Task {TaskId} timed out waiting for its webhook", taskId);
+
+                await _conversationService.AddMessageAsync(task.ConversationId, new ConversationMessage
+                {
+                    Role = "assistant",
+                    Content = $"⚠️ **{task.Name}** — timed out waiting for the publish to complete.",
+                    Timestamp = DateTime.UtcNow
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Error in publish webhook timeout for task {TaskId}", taskId);
+            }
+        });
     }
 
     public Task<IReadOnlyList<AgentTaskInfo>> GetTasksByConversationAsync(string conversationId)
