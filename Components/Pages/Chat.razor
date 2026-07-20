@@ -90,15 +90,24 @@
         margin-top: 3px;
     }
 
+    .chat-page-root {
+        height: 100%;
+        min-height: 0;
+        overflow: hidden;
+        box-sizing: border-box;
+    }
+
     .chat-two-col {
-        align-items: flex-start;
-        height: calc(100vh - 180px);
+        align-items: stretch;
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: hidden;
     }
 
     @@media (max-width: 768px) {
         .chat-two-col {
             flex-direction: column !important;
-            height: auto !important;
+            overflow: visible;
         }
         .chat-task-panel {
             width: 100% !important;
@@ -108,7 +117,7 @@
     }
 </style>
 
-<FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Class="chat-page-root">
     <FluentButton Appearance="Appearance.Lightweight"
                   IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
                   OnClick="@(() => NavigationManager.NavigateTo("/chat-projects"))">
@@ -137,7 +146,7 @@
             <FluentStack Orientation="Orientation.Vertical"
                          VerticalGap="8"
                          Class="chat-task-panel"
-                         Style="width: 360px; flex: 0 0 360px; overflow-y: auto; height: 100%;">
+                         Style="width: 360px; flex: 0 0 360px; overflow-y: auto; min-height: 0;">
                 <h3 style="margin: 0;">Assistant Tasks</h3>
                 @if (_agentTasks.Count == 0)
                 {
@@ -174,8 +183,8 @@
                 }
             </FluentStack>
 
-            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 90%; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px;">
-                <div style="flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
+            <div style="flex: 1 1 auto; min-width: 0; min-height: 0; display: flex; flex-direction: column; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px;">
+                <div style="flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
                     @if (_conversation.Messages.Count == 0)
                     {
                         <p style="color: var(--neutral-foreground-hint); text-align: center; margin-top: 40px;">
