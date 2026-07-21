@@ -1,5 +1,7 @@
 using System.ComponentModel;
+using System.Net.Http.Headers;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 using ApsSamples.Models;
 using ApsSamples.Services;
 using Autodesk.DataManagement;
@@ -15,6 +17,7 @@ namespace ApsSamples.Tools
         IUserSessionService session,
         IAgentTaskService taskService,
         IAPSAuthenticationService apsAuth,
+        IHttpClientFactory httpClientFactory,
         IConfiguration configuration)
     {
         // Set by the host page (Chat.razor) for the hub/project/conversation the user is currently
@@ -135,9 +138,9 @@ namespace ApsSamples.Tools
 
             return status switch
             {
-                null => $"'{modelName}' has no publish job on record - it hasn't been published yet and is ready to publish.",
-                CommandExecutionStatus.Complete => $"'{modelName}' was published successfully and can be published again if needed.",
-                CommandExecutionStatus.Failed => $"'{modelName}' last publish failed - it can be retried.",
+                PublishJobStatus.NotFound => $"'{modelName}' has no publish job on record - it hasn't been published yet and is ready to publish.",
+                PublishJobStatus.Complete => $"'{modelName}' was published successfully and can be published again if needed.",
+                PublishJobStatus.Failed => $"'{modelName}' last publish failed - it can be retried.",
                 _ => $"'{modelName}' currently has a publish in progress; wait for it to finish before publishing it again."
             };
         }
@@ -153,7 +156,7 @@ namespace ApsSamples.Tools
             foreach (var model in allModels)
             {
                 var status = await GetLastPublishJobStatusAsync(projectId, model.ItemId, accessToken);
-                if (status is null or CommandExecutionStatus.Failed)
+                if (status is PublishJobStatus.NotFound or PublishJobStatus.Failed)
                 {
                     unpublished.Add(model);
                 }
@@ -162,33 +165,41 @@ namespace ApsSamples.Tools
             return unpublished;
         }
 
-        // Queries the last "publish model" command recorded for the item, using the
-        // GetPublishModelJob command. A null result means no publish job was ever recorded for
-        // the item, i.e. it has never been published.
-        private async Task<CommandExecutionStatus?> GetLastPublishJobStatusAsync(string projectId, string itemId, string accessToken)
+        private enum PublishJobStatus
         {
-            var payload = new PublishModelJobPayload
+            NotFound,
+            InProgress,
+            Complete,
+            Failed
+        }
+
+        // Queries the last "publish model" command recorded for the item, using the
+        // GetPublishModelJob command (https://aps.autodesk.com/en/docs/data/v2/reference/http/GetPublishModelJob/).
+        // Called directly over HTTP - DataManagementClient.ExecuteGetPublishModelJobAsync throws a
+        // NullReferenceException inside the generated SDK client for this particular command.
+        // NotFound means no publish job was ever recorded for the item, i.e. it has never been
+        // published.
+        private async Task<PublishJobStatus> GetLastPublishJobStatusAsync(string projectId, string itemId, string accessToken)
+        {
+            var requestBody = new JsonObject
             {
-                Type = TypeCommands.Commands,
-                Attributes = new PublishModelJobPayloadAttributes
+                ["jsonapi"] = new JsonObject { ["version"] = "1.0" },
+                ["data"] = new JsonObject
                 {
-                    Extension = new PublishModelJobPayloadAttributesExtension
+                    ["type"] = "commands",
+                    ["attributes"] = new JsonObject
                     {
-                        Type = TypeCommandtypeGetPublishModelJob.CommandsautodeskBim360C4RModelGetPublishJob,
-                        VarVersion = "1.0.0"
-                    }
-                },
-                Relationships = new PublishModelJobPayloadRelationships
-                {
-                    Resources = new PublishModelJobPayloadRelationshipsResources
-                    {
-                        Data = new List<PublishModelJobPayloadRelationshipsResourcesData>
+                        ["extension"] = new JsonObject
                         {
-                            new PublishModelJobPayloadRelationshipsResourcesData
-                            {
-                                Type = TypeItem.Items,
-                                Id = itemId
-                            }
+                            ["type"] = "commands:autodesk.bim360:C4RModelGetPublishJob",
+                            ["version"] = "1.0.0"
+                        }
+                    },
+                    ["relationships"] = new JsonObject
+                    {
+                        ["resources"] = new JsonObject
+                        {
+                            ["data"] = new JsonArray(new JsonObject { ["type"] = "items", ["id"] = itemId })
                         }
                     }
                 }
@@ -196,18 +207,59 @@ namespace ApsSamples.Tools
 
             try
             {
-                var job = await dataManagementClient.ExecuteGetPublishModelJobAsync(
-                    projectId: projectId,
-                    publishModelJobPayload: payload,
-                    accessToken: accessToken,
-                    throwOnError: false);
+                var httpClient = httpClientFactory.CreateClient();
+                httpClient.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", accessToken);
 
-                return job?.Attributes?.Status;
+                var request = new HttpRequestMessage(HttpMethod.Post,
+                    $"https://developer.api.autodesk.com/data/v1/projects/{projectId}/commands")
+                {
+                    Content = new StringContent(requestBody.ToJsonString(), System.Text.Encoding.UTF8, "application/vnd.api+json")
+                };
+
+                var response = await httpClient.SendAsync(request);
+                if (!response.IsSuccessStatusCode)
+                {
+                    return PublishJobStatus.NotFound;
+                }
+
+                var body = await response.Content.ReadAsStringAsync();
+                var root = JsonNode.Parse(body);
+
+                // The command-level status ("complete"/"failed"/"pending") lives at data.attributes.status;
+                // the actual publish job details (if any) are nested under data.attributes.extension.data,
+                // whose exact shape isn't part of the published schema, so read defensively.
+                var statusText =
+                    root?["data"]?["attributes"]?["extension"]?["data"]?["status"]?.GetValue<string>() ??
+                    root?["data"]?["attributes"]?["status"]?.GetValue<string>();
+
+                return ParsePublishJobStatus(statusText);
             }
             catch (Exception)
             {
-                return null;
+                return PublishJobStatus.NotFound;
             }
+        }
+
+        private static PublishJobStatus ParsePublishJobStatus(string? statusText)
+        {
+            if (string.IsNullOrEmpty(statusText))
+            {
+                return PublishJobStatus.NotFound;
+            }
+
+            if (statusText.Contains("complete", StringComparison.OrdinalIgnoreCase) ||
+                statusText.Contains("success", StringComparison.OrdinalIgnoreCase))
+            {
+                return PublishJobStatus.Complete;
+            }
+
+            if (statusText.Contains("fail", StringComparison.OrdinalIgnoreCase) ||
+                statusText.Contains("error", StringComparison.OrdinalIgnoreCase))
+            {
+                return PublishJobStatus.Failed;
+            }
+
+            return PublishJobStatus.InProgress;
         }
 
         private async Task FailTaskAsync(AgentTaskInfo task, string errorDetail)
