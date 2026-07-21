@@ -1,6 +1,8 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using ApsSamples.Models;
+using Autodesk.Webhooks;
+using Autodesk.Webhooks.Model;
 
 namespace ApsSamples.Services;
 
@@ -14,13 +16,20 @@ public class AgentTaskService : IAgentTaskService
     private readonly ConcurrentDictionary<string, AgentTaskInfo> _tasksCache = new();
     private readonly ConcurrentDictionary<string, byte> _scheduledTimeouts = new();
     private readonly IAgentConversationService _conversationService;
+    // WebhooksClient/IAPSAuthenticationService are Scoped, but this service is a Singleton, so a
+    // scope is created on demand each time one is needed instead of injecting them directly.
+    private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<AgentTaskService> _logger;
     private readonly string _filePath;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
 
-    public AgentTaskService(IAgentConversationService conversationService, ILogger<AgentTaskService> logger)
+    public AgentTaskService(
+        IAgentConversationService conversationService,
+        IServiceScopeFactory scopeFactory,
+        ILogger<AgentTaskService> logger)
     {
         _conversationService = conversationService;
+        _scopeFactory = scopeFactory;
         _logger = logger;
 
         var dataDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data");
@@ -58,10 +67,45 @@ public class AgentTaskService : IAgentTaskService
 
         _logger.LogInformation("Updated agent task {TaskId}: {Status}", task.TaskId, task.Status);
 
-        if (task.Status == AgentTaskStatus.Running && !string.IsNullOrEmpty(task.WebhookHookId) &&
-            _scheduledTimeouts.TryAdd(task.TaskId, 0))
+        if (string.IsNullOrEmpty(task.WebhookHookId))
+        {
+            return;
+        }
+
+        if (task.Status == AgentTaskStatus.Running && _scheduledTimeouts.TryAdd(task.TaskId, 0))
         {
             ScheduleWebhookTimeout(task.TaskId);
+        }
+        else if (task.Status != AgentTaskStatus.Running)
+        {
+            await TryDeleteHookIfUnusedAsync(task.WebhookHookId);
+        }
+    }
+
+    // The webhook is temporary: several tasks (one per published model) can share it when they're
+    // all published from the same folder. Only delete it once none of them are still waiting on it.
+    private async Task TryDeleteHookIfUnusedAsync(string hookId)
+    {
+        var stillNeeded = _tasksCache.Values.Any(t => t.WebhookHookId == hookId && t.Status == AgentTaskStatus.Running);
+        if (stillNeeded)
+        {
+            return;
+        }
+
+        try
+        {
+            using var scope = _scopeFactory.CreateScope();
+            var webhooksClient = scope.ServiceProvider.GetRequiredService<WebhooksClient>();
+            var apsAuth = scope.ServiceProvider.GetRequiredService<IAPSAuthenticationService>();
+
+            var accessToken = await apsAuth.GetTwoLeggedTokenAsync();
+            await webhooksClient.DeleteSystemEventHookAsync(Systems.Data, Events.DmVersionAdded, hookId, accessToken: accessToken);
+
+            _logger.LogInformation("Deleted webhook {HookId} - no tasks are waiting on it anymore", hookId);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to delete webhook {HookId}", hookId);
         }
     }
 

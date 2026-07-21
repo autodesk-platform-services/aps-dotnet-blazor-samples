@@ -14,6 +14,7 @@ namespace ApsSamples.Tools
         WebhooksClient webhooksClient,
         IUserSessionService session,
         IAgentTaskService taskService,
+        IAPSAuthenticationService apsAuth,
         IConfiguration configuration)
     {
         // Set by the host page (Chat.razor) for the hub/project/conversation the user is currently
@@ -130,9 +131,11 @@ namespace ApsSamples.Tools
             await taskService.UpdateTaskAsync(task);
         }
 
-        // Registers a dm.version.added webhook so the task started above gets marked
+        // Subscribes the task started above to a dm.version.added webhook so it gets marked
         // Completed/Failed once the publish actually lands, instead of just reflecting that the
-        // command was submitted.
+        // command was submitted. The webhook is temporary: reused across models published from the
+        // same folder while any of them are still pending, and deleted by AgentTaskService once
+        // none are (see AgentTaskService.TryDeleteHookIfUnusedAsync).
         private async Task<bool> TrySubscribeToPublishCompletionAsync(
             AgentTaskInfo task, string hubId, string projectId, string itemId, string modelName, string accessToken)
         {
@@ -152,6 +155,40 @@ namespace ApsSamples.Tools
                 return false;
             }
 
+            // Webhook management uses an app-level (2-legged) token rather than the user's, since
+            // it must also work later from a background timeout or an incoming webhook callback,
+            // where no user session is available.
+            var webhookToken = await apsAuth.GetTwoLeggedTokenAsync();
+
+            var hookId = await FindExistingHookIdAsync(folderId, webhookToken)
+                ?? await CreateHookAsync(hubId, projectId, folderId, callbackUrl, webhookToken);
+
+            if (string.IsNullOrEmpty(hookId))
+            {
+                return false;
+            }
+
+            task.WebhookHookId = hookId;
+            task.WebhookTargetFileName = modelName;
+            await taskService.UpdateTaskAsync(task);
+            return true;
+        }
+
+        private async Task<string?> FindExistingHookIdAsync(string folderId, string webhookToken)
+        {
+            var existingHooks = await webhooksClient.GetSystemEventHooksAsync(
+                Systems.Data,
+                Events.DmVersionAdded,
+                scopeName: "folder",
+                accessToken: webhookToken);
+
+            return existingHooks.Data?
+                .FirstOrDefault(h => string.Equals(h.Scope?.Folder, folderId, StringComparison.OrdinalIgnoreCase))
+                ?.HookId;
+        }
+
+        private async Task<string?> CreateHookAsync(string hubId, string projectId, string folderId, string callbackUrl, string webhookToken)
+        {
             var hookPayload = new HookPayload
             {
                 CallbackUrl = callbackUrl,
@@ -164,26 +201,16 @@ namespace ApsSamples.Tools
                 Systems.Data,
                 Events.DmVersionAdded,
                 hookPayload,
-                accessToken: accessToken);
+                accessToken: webhookToken);
 
             if (!response.IsSuccessStatusCode)
             {
-                return false;
+                return null;
             }
 
             var responseBody = await response.Content.ReadAsStringAsync();
-            var hookId = JsonSerializer.Deserialize<HookDetails>(responseBody,
+            return JsonSerializer.Deserialize<HookDetails>(responseBody,
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })?.HookId;
-
-            if (string.IsNullOrEmpty(hookId))
-            {
-                return false;
-            }
-
-            task.WebhookHookId = hookId;
-            task.WebhookTargetFileName = modelName;
-            await taskService.UpdateTaskAsync(task);
-            return true;
         }
 
         private string RequireProjectId()
