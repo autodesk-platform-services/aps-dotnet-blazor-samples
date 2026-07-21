@@ -123,6 +123,93 @@ namespace ApsSamples.Tools
                     "so the task will show as failed if it doesn't complete in time.";
         }
 
+        [Description("Checks whether a Revit model has ever been published successfully, or has a publish currently in progress. Call ListRevitModelsAsync first to get the item ID.")]
+        public async Task<string> CheckModelPublishEligibilityAsync(
+            [Description("Item ID of the Revit model to check, as returned by ListRevitModelsAsync")] string itemId,
+            [Description("Display name of the model, used in the response")] string modelName)
+        {
+            var projectId = RequireProjectId();
+            var accessToken = session.AccessToken ?? string.Empty;
+
+            var status = await GetLastPublishJobStatusAsync(projectId, itemId, accessToken);
+
+            return status switch
+            {
+                null => $"'{modelName}' has no publish job on record - it hasn't been published yet and is ready to publish.",
+                CommandExecutionStatus.Complete => $"'{modelName}' was published successfully and can be published again if needed.",
+                CommandExecutionStatus.Failed => $"'{modelName}' last publish failed - it can be retried.",
+                _ => $"'{modelName}' currently has a publish in progress; wait for it to finish before publishing it again."
+            };
+        }
+
+        [Description("Lists the Revit models in the current project that have never been published successfully - i.e. models with no completed publish job on record. Use this to answer questions like 'which models are unpublished'.")]
+        public async Task<List<RevitModelInfo>> ListUnpublishedModelsAsync()
+        {
+            var projectId = RequireProjectId();
+            var accessToken = session.AccessToken ?? string.Empty;
+            var allModels = await ListRevitModelsAsync();
+
+            var unpublished = new List<RevitModelInfo>();
+            foreach (var model in allModels)
+            {
+                var status = await GetLastPublishJobStatusAsync(projectId, model.ItemId, accessToken);
+                if (status is null or CommandExecutionStatus.Failed)
+                {
+                    unpublished.Add(model);
+                }
+            }
+
+            return unpublished;
+        }
+
+        // Queries the last "publish model" command recorded for the item, using the
+        // GetPublishModelJob command. A null result means no publish job was ever recorded for
+        // the item, i.e. it has never been published.
+        private async Task<CommandExecutionStatus?> GetLastPublishJobStatusAsync(string projectId, string itemId, string accessToken)
+        {
+            var payload = new PublishModelJobPayload
+            {
+                Type = TypeCommands.Commands,
+                Attributes = new PublishModelJobPayloadAttributes
+                {
+                    Extension = new PublishModelJobPayloadAttributesExtension
+                    {
+                        Type = TypeCommandtypeGetPublishModelJob.CommandsautodeskBim360C4RModelGetPublishJob,
+                        VarVersion = "1.0.0"
+                    }
+                },
+                Relationships = new PublishModelJobPayloadRelationships
+                {
+                    Resources = new PublishModelJobPayloadRelationshipsResources
+                    {
+                        Data = new List<PublishModelJobPayloadRelationshipsResourcesData>
+                        {
+                            new PublishModelJobPayloadRelationshipsResourcesData
+                            {
+                                Type = TypeItem.Items,
+                                Id = itemId
+                            }
+                        }
+                    }
+                }
+            };
+
+            try
+            {
+                var job = await dataManagementClient.ExecuteGetPublishModelJobAsync(
+                    projectId: projectId,
+                    publishModelJobPayload: payload,
+                    accessToken: accessToken,
+                    throwOnError: false);
+
+                return job?.Attributes?.Status;
+            }
+            catch (Exception)
+            {
+                return null;
+            }
+        }
+
         private async Task FailTaskAsync(AgentTaskInfo task, string errorDetail)
         {
             task.Status = AgentTaskStatus.Failed;
