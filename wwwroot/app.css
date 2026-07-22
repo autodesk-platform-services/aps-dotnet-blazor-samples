@@ -12,6 +12,11 @@ body {
     display: none;
 }
 
+.navmenu {
+    background: var(--neutral-layer-2);
+    border-right: 1px solid var(--neutral-stroke-rest);
+}
+
 .main {
     min-height: calc(100dvh - 86px);
     color: var(--neutral-foreground-rest);
