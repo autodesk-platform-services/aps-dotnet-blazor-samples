@@ -78,10 +78,48 @@
         padding: 4px 8px;
     }
 
+    .chat-notice-bubble {
+        border-radius: 8px;
+        border: 1px solid;
+        padding: 10px 14px;
+        align-self: flex-start;
+        max-width: 80%;
+    }
+
+    .chat-notice-success {
+        background: color-mix(in srgb, #107c10 12%, transparent);
+        border-color: #107c10;
+    }
+
+    .chat-notice-failure {
+        background: color-mix(in srgb, #d13438 12%, transparent);
+        border-color: #d13438;
+    }
+
+    .chat-avatar {
+        width: 24px;
+        height: 24px;
+        border-radius: 50%;
+        background: var(--accent-fill-rest);
+        color: var(--foreground-on-accent-rest);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 11px;
+        font-weight: 600;
+        flex: 0 0 auto;
+    }
+
     .chat-message-row {
         display: flex;
         flex-direction: column;
         margin-bottom: 12px;
+    }
+
+    .chat-message-row-assistant {
+        flex-direction: row;
+        align-items: flex-start;
+        gap: 8px;
     }
 
     .chat-message-timestamp {
@@ -92,7 +130,7 @@
 
     .chat-columns {
         align-items: flex-start;
-        height: 75vh;
+        height: 82vh;
     }
 
     @@media (max-width: 768px) {
@@ -108,6 +146,51 @@
         }
     }
 
+    .chat-center-header {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        padding: 12px 16px;
+        border-bottom: 1px solid var(--neutral-stroke-rest);
+        gap: 8px;
+    }
+
+    .chat-quick-actions {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        padding: 0 12px 8px 12px;
+    }
+
+    .chat-quick-action-chip {
+        cursor: pointer;
+        font-size: 12px;
+        padding: 5px 12px;
+        border-radius: 999px;
+        border: 1px solid var(--neutral-stroke-rest);
+        background: var(--neutral-layer-1);
+        color: var(--neutral-foreground-rest);
+    }
+
+    .chat-quick-action-chip:hover {
+        background: var(--neutral-layer-2);
+    }
+
+    .chat-input-hint {
+        font-size: 11px;
+        color: var(--neutral-foreground-hint);
+        margin-top: 4px;
+    }
+
+    .panel-group-label {
+        font-size: 11px;
+        font-weight: 600;
+        letter-spacing: 0.04em;
+        color: var(--neutral-foreground-hint);
+        text-transform: uppercase;
+        margin: 4px 0 0 0;
+    }
+
     .conversation-item {
         width: 100%;
         box-sizing: border-box;
@@ -115,6 +198,7 @@
         padding: 8px;
         border-radius: 6px;
         border: 1px solid transparent;
+        border-left: 3px solid transparent;
     }
 
     .conversation-item:hover {
@@ -123,7 +207,13 @@
 
     .conversation-item-active {
         background: var(--neutral-layer-2);
-        border-color: var(--accent-fill-rest);
+        border-left-color: var(--accent-fill-rest);
+    }
+
+    .conversation-title-row {
+        display: flex;
+        align-items: center;
+        gap: 6px;
     }
 
     .conversation-title {
@@ -133,10 +223,53 @@
         text-overflow: ellipsis;
     }
 
-    .conversation-timestamp {
+    .conversation-active-dot {
+        width: 7px;
+        height: 7px;
+        border-radius: 50%;
+        background: #107c10;
+        flex: 0 0 auto;
+    }
+
+    .conversation-meta {
+        display: flex;
+        justify-content: space-between;
         font-size: 11px;
         color: var(--neutral-foreground-hint);
         margin-top: 2px;
+    }
+
+    .task-counts-row {
+        display: flex;
+        gap: 12px;
+        font-size: 12px;
+        color: var(--neutral-foreground-hint);
+        flex-wrap: wrap;
+    }
+
+    .task-filter-tabs {
+        display: flex;
+        gap: 4px;
+        border-bottom: 1px solid var(--neutral-stroke-rest);
+        padding-bottom: 4px;
+    }
+
+    .task-filter-tab {
+        cursor: pointer;
+        font-size: 12px;
+        padding: 4px 10px;
+        border-radius: 6px;
+        color: var(--neutral-foreground-hint);
+    }
+
+    .task-filter-tab:hover {
+        background: var(--neutral-layer-2);
+    }
+
+    .task-filter-tab-active {
+        background: var(--neutral-layer-2);
+        color: var(--neutral-foreground-rest);
+        font-weight: 600;
     }
 
     .task-item {
@@ -144,6 +277,7 @@
         box-sizing: border-box;
         cursor: pointer;
         border: 1px solid var(--neutral-stroke-rest);
+        border-left: 3px solid var(--neutral-stroke-rest);
         border-radius: 6px;
         padding: 8px;
     }
@@ -158,6 +292,18 @@
 
     .task-item summary::-webkit-details-marker {
         display: none;
+    }
+
+    .task-item-active {
+        border-left-color: #ca5010;
+    }
+
+    .task-item-completed {
+        border-left-color: #107c10;
+    }
+
+    .task-item-failed {
+        border-left-color: #d13438;
     }
 
     .task-status-badge {
@@ -175,16 +321,6 @@
         Back to Projects
     </FluentButton>
 
-    <div>
-        <h1>AI Assistants Chat</h1>
-        @if (!string.IsNullOrEmpty(_projectName))
-        {
-            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
-                Project: @_projectName
-            </p>
-        }
-    </div>
-
     @if (!string.IsNullOrEmpty(_errorMessage))
     {
         <FluentMessageBar Intent="MessageIntent.Error">
@@ -198,24 +334,58 @@
                          VerticalGap="8"
                          Class="chat-side-panel"
                          Style="width: 260px; flex: 0 0 260px; overflow-y: auto; height: 100%;">
-                <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="display: flex; align-items: center; justify-content: space-between;">
                     <h3 style="margin: 0;">Conversations</h3>
-                    <FluentButton Appearance="Appearance.Lightweight"
-                                  IconStart="@(new Icons.Regular.Size16.Add())"
-                                  Title="New conversation"
-                                  OnClick="StartNewConversationAsync" />
                 </div>
-                @foreach (var convo in _conversations)
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size16.Add())"
+                              Style="width: 100%;"
+                              OnClick="StartNewConversationAsync">
+                    New conversation
+                </FluentButton>
+                <FluentSearch @bind-Value="_conversationSearch"
+                              Immediate="true"
+                              Placeholder="Search conversations..."
+                              Style="width: 100%;" />
+                @foreach (var group in GroupConversationsByDate(FilteredConversations))
                 {
-                    <div class="conversation-item @(convo.ConversationId == _conversation.ConversationId ? "conversation-item-active" : "")"
-                         @onclick="@(() => SelectConversationAsync(convo))">
-                        <div class="conversation-title">@GetConversationTitle(convo)</div>
-                        <div class="conversation-timestamp">@convo.LastActivityAt.ToLocalTime().ToString("g")</div>
-                    </div>
+                    <p class="panel-group-label">@group.Label</p>
+                    @foreach (var convo in group.Items)
+                    {
+                        <div class="conversation-item @(convo.ConversationId == _conversation.ConversationId ? "conversation-item-active" : "")"
+                             @onclick="@(() => SelectConversationAsync(convo))">
+                            <div class="conversation-title-row">
+                                @if (HasActiveTask(convo.ConversationId))
+                                {
+                                    <span class="conversation-active-dot" title="Has an active task"></span>
+                                }
+                                <span class="conversation-title">@GetConversationTitle(convo)</span>
+                            </div>
+                            <div class="conversation-meta">
+                                <span>@TaskCount(convo.ConversationId) task@(TaskCount(convo.ConversationId) == 1 ? "" : "s")</span>
+                                <span>@convo.LastActivityAt.ToLocalTime().ToString("t")</span>
+                            </div>
+                        </div>
+                    }
                 }
             </FluentStack>
 
             <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px;">
+                <div class="chat-center-header">
+                    <div>
+                        <h2 style="margin: 0;">@GetConversationTitle(_conversation)</h2>
+                        @if (!string.IsNullOrEmpty(_projectName))
+                        {
+                            <p style="color: var(--neutral-foreground-hint); margin: 4px 0 0 0; font-size: 13px;">
+                                Project: @_projectName
+                            </p>
+                        }
+                    </div>
+                    <FluentButton Appearance="Appearance.Hypertext" OnClick="ClearChatAsync">
+                        Clear chat
+                    </FluentButton>
+                </div>
+
                 <div style="flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
                     @if (_conversation.Messages.Count == 0)
                     {
@@ -228,48 +398,83 @@
                         @foreach (var msg in _conversation.Messages)
                         {
                             var isUser = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase);
-                            <div id="msg-@msg.Id" class="chat-message-row" style="align-items: @(isUser ? "flex-end" : "flex-start");">
-                                <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
-                                    @if (isUser)
+                            var isSuccessNotice = !isUser && msg.Content.StartsWith("✅");
+                            var isFailureNotice = !isUser && msg.Content.StartsWith("⚠️");
+                            <div id="msg-@msg.Id" class="chat-message-row @(isUser ? "" : "chat-message-row-assistant")" style="align-items: @(isUser ? "flex-end" : "flex-start");">
+                                @if (!isUser)
+                                {
+                                    <div class="chat-avatar">A</div>
+                                }
+                                <div style="display: flex; flex-direction: column; align-items: @(isUser ? "flex-end" : "flex-start");">
+                                    @if (isSuccessNotice || isFailureNotice)
                                     {
-                                        @msg.Content
+                                        <div class="chat-notice-bubble @(isSuccessNotice ? "chat-notice-success" : "chat-notice-failure")">
+                                            @RenderMarkdown(msg.Content)
+                                        </div>
                                     }
                                     else
                                     {
-                                        @RenderMarkdown(msg.Content)
+                                        <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
+                                            @if (isUser)
+                                            {
+                                                @msg.Content
+                                            }
+                                            else
+                                            {
+                                                @RenderMarkdown(msg.Content)
+                                            }
+                                        </div>
                                     }
+                                    <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
                                 </div>
-                                <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
                             </div>
                         }
                     }
                     <div @ref="_scrollAnchor"></div>
                 </div>
 
+                <div class="chat-quick-actions">
+                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
+                        Find unpublished models
+                    </span>
+                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
+                        List Revit models
+                    </span>
+                    @if (_agentTasks.Any(t => t.Status == AgentTaskStatus.Failed))
+                    {
+                        <span class="chat-quick-action-chip" @onclick="@(() => _taskStatusFilter = "Failed")">
+                            Show failed tasks
+                        </span>
+                    }
+                </div>
+
                 <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
                     <FluentTextArea @bind-Value="_inputText"
                                     Immediate="true"
-                                    Placeholder="Type a message..."
+                                    Placeholder="Ask about this project or request an action..."
                                     Rows="3"
                                     Style="width: 100%;"
                                     Disabled="_isStreaming"
                                     @onkeydown="HandleKeyDown" />
                     <FluentStack Orientation="Orientation.Horizontal"
-                                 HorizontalAlignment="HorizontalAlignment.End"
+                                 HorizontalAlignment="HorizontalAlignment.SpaceBetween"
                                  VerticalAlignment="VerticalAlignment.Center"
                                  HorizontalGap="8"
                                  Style="margin-top: 8px;">
-                        @if (_isStreaming)
-                        {
-                            <FluentProgressRing Style="width: 20px; height: 20px;" />
-                            <span style="color: var(--neutral-foreground-hint);">Responding...</span>
-                        }
-                        <FluentButton Appearance="Appearance.Accent"
-                                      IconStart="@(new Icons.Regular.Size16.Send())"
-                                      OnClick="SendMessage"
-                                      Disabled="@(_isStreaming || string.IsNullOrWhiteSpace(_inputText))">
-                            Send
-                        </FluentButton>
+                        <span class="chat-input-hint">Enter to send &bull; Shift+Enter for new line</span>
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                            @if (_isStreaming)
+                            {
+                                <FluentProgressRing Style="width: 20px; height: 20px;" />
+                                <span style="color: var(--neutral-foreground-hint);">Responding...</span>
+                            }
+                            <FluentButton Appearance="Appearance.Accent"
+                                          IconStart="@(new Icons.Regular.Size16.Send())"
+                                          OnClick="SendMessage"
+                                          Disabled="@(_isStreaming || string.IsNullOrWhiteSpace(_inputText))">
+                                Send
+                            </FluentButton>
+                        </FluentStack>
                     </FluentStack>
                 </div>
             </div>
@@ -278,8 +483,8 @@
                          VerticalGap="8"
                          Class="chat-task-panel"
                          Style="width: 360px; flex: 0 0 360px; overflow-y: auto; height: 100%;">
-                <div style="display: flex; align-items: center; gap: 8px;">
-                    <h3 style="margin: 0;">Assistant Tasks</h3>
+                <div style="display: flex; align-items: center; justify-content: space-between;">
+                    <h3 style="margin: 0;">Tasks</h3>
                     @if (_taskFilterConversationId != null)
                     {
                         <FluentButton Appearance="Appearance.Hypertext" OnClick="ClearTaskFilter">
@@ -287,37 +492,55 @@
                         </FluentButton>
                     }
                 </div>
-                @if (FilteredTasks.Count == 0)
+
+                <div class="task-counts-row">
+                    <span>✅ @FilteredTasks.Count(t => t.Status == AgentTaskStatus.Completed) Completed</span>
+                    <span>🟠 @FilteredTasks.Count(t => t.Status is AgentTaskStatus.Running or AgentTaskStatus.Pending) Active</span>
+                    <span>❌ @FilteredTasks.Count(t => t.Status == AgentTaskStatus.Failed) Failed</span>
+                </div>
+
+                <div class="task-filter-tabs">
+                    <span class="task-filter-tab @(_taskStatusFilter == null ? "task-filter-tab-active" : "")" @onclick="@(() => _taskStatusFilter = null)">All</span>
+                    <span class="task-filter-tab @(_taskStatusFilter == "Active" ? "task-filter-tab-active" : "")" @onclick='@(() => _taskStatusFilter = "Active")'>Active</span>
+                    <span class="task-filter-tab @(_taskStatusFilter == "Completed" ? "task-filter-tab-active" : "")" @onclick='@(() => _taskStatusFilter = "Completed")'>Completed</span>
+                    <span class="task-filter-tab @(_taskStatusFilter == "Failed" ? "task-filter-tab-active" : "")" @onclick='@(() => _taskStatusFilter = "Failed")'>Failed</span>
+                </div>
+
+                @if (DisplayedTasks.Count == 0)
                 {
                     <p style="color: var(--neutral-foreground-hint);">No tasks yet.</p>
                 }
                 else
                 {
-                    @foreach (var task in FilteredTasks)
+                    @foreach (var group in GroupTasksByStatus(DisplayedTasks))
                     {
-                        <details class="task-item" @onclick="@(() => SelectTaskAsync(task))">
-                            <summary style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
-                                <span style="flex: 1 1 auto;">@task.Name</span>
-                                <span class="task-status-badge" style="@GetTaskBadgeStyle(task.Status)">
-                                    @task.Status
-                                </span>
-                            </summary>
-                            <div style="margin-top: 8px; font-size: 12px;">
-                                <div>Started: @task.StartedAt.ToLocalTime().ToString("g")</div>
-                                @if (task.CompletedAt.HasValue)
-                                {
-                                    <div>Completed: @task.CompletedAt.Value.ToLocalTime().ToString("g")</div>
-                                }
-                                @if (!string.IsNullOrEmpty(task.ProgressDetail))
-                                {
-                                    <div style="margin-top: 4px;">@task.ProgressDetail</div>
-                                }
-                                @if (task.Status == AgentTaskStatus.Failed && !string.IsNullOrEmpty(task.ErrorDetail))
-                                {
-                                    <div style="margin-top: 4px; color: var(--error);">@task.ErrorDetail</div>
-                                }
-                            </div>
-                        </details>
+                        <p class="panel-group-label">@group.Label</p>
+                        @foreach (var task in group.Items)
+                        {
+                            <details class="task-item @GetTaskItemClass(task.Status)" @onclick="@(() => SelectTaskAsync(task))">
+                                <summary style="cursor: pointer; display: flex; align-items: center; gap: 8px;">
+                                    <span style="flex: 1 1 auto;">@task.Name</span>
+                                    <span class="task-status-badge" style="@GetTaskBadgeStyle(task.Status)">
+                                        @task.Status
+                                    </span>
+                                </summary>
+                                <div style="margin-top: 8px; font-size: 12px;">
+                                    <div>Started: @task.StartedAt.ToLocalTime().ToString("g")</div>
+                                    @if (task.CompletedAt.HasValue)
+                                    {
+                                        <div>Completed: @task.CompletedAt.Value.ToLocalTime().ToString("g") (@FormatDuration(task.StartedAt, task.CompletedAt.Value))</div>
+                                    }
+                                    @if (!string.IsNullOrEmpty(task.ProgressDetail))
+                                    {
+                                        <div style="margin-top: 4px;">@task.ProgressDetail</div>
+                                    }
+                                    @if (task.Status == AgentTaskStatus.Failed && !string.IsNullOrEmpty(task.ErrorDetail))
+                                    {
+                                        <div style="margin-top: 4px; color: var(--error);">@task.ErrorDetail</div>
+                                    }
+                                </div>
+                            </details>
+                        }
                     }
                 }
             </FluentStack>
@@ -344,6 +567,8 @@
     private List<ConversationSession> _conversations = new();
     private IReadOnlyList<AgentTaskInfo> _agentTasks = Array.Empty<AgentTaskInfo>();
     private string? _taskFilterConversationId;
+    private string? _taskStatusFilter;
+    private string _conversationSearch = string.Empty;
     private string _inputText = string.Empty;
     private bool _isStreaming;
     private bool _disposed;
@@ -352,9 +577,23 @@
     private ElementReference _scrollAnchor;
     private IJSObjectReference? _jsModule;
 
+    private IReadOnlyList<ConversationSession> FilteredConversations => string.IsNullOrWhiteSpace(_conversationSearch)
+        ? _conversations
+        : _conversations
+            .Where(c => GetConversationTitle(c).Contains(_conversationSearch, StringComparison.OrdinalIgnoreCase))
+            .ToList();
+
     private IReadOnlyList<AgentTaskInfo> FilteredTasks => _taskFilterConversationId == null
         ? _agentTasks
         : _agentTasks.Where(t => t.ConversationId == _taskFilterConversationId).ToList();
+
+    private IReadOnlyList<AgentTaskInfo> DisplayedTasks => _taskStatusFilter switch
+    {
+        "Active" => FilteredTasks.Where(t => t.Status is AgentTaskStatus.Running or AgentTaskStatus.Pending).ToList(),
+        "Completed" => FilteredTasks.Where(t => t.Status == AgentTaskStatus.Completed).ToList(),
+        "Failed" => FilteredTasks.Where(t => t.Status == AgentTaskStatus.Failed).ToList(),
+        _ => FilteredTasks
+    };
 
     protected override async Task OnInitializedAsync()
     {
@@ -541,6 +780,20 @@
         await ScrollToBottomAsync();
     }
 
+    private async Task ClearChatAsync()
+    {
+        if (_conversation == null) return;
+
+        await ConversationService.ClearMessagesAsync(_conversation.ConversationId);
+        _conversation.Messages.Clear();
+        await InvokeAsync(StateHasChanged);
+    }
+
+    private void SetQuickPrompt(string text)
+    {
+        _inputText = text;
+    }
+
     private void ClearTaskFilter()
     {
         _taskFilterConversationId = null;
@@ -581,6 +834,52 @@
         return text.Length > 40 ? text[..40] + "…" : text;
     }
 
+    private int TaskCount(string conversationId) =>
+        _agentTasks.Count(t => t.ConversationId == conversationId);
+
+    private bool HasActiveTask(string conversationId) =>
+        _agentTasks.Any(t => t.ConversationId == conversationId && t.Status is AgentTaskStatus.Running or AgentTaskStatus.Pending);
+
+    private static List<(string Label, List<ConversationSession> Items)> GroupConversationsByDate(IReadOnlyList<ConversationSession> conversations)
+    {
+        var today = DateTime.Now.Date;
+        var groups = new List<(string Label, List<ConversationSession> Items)>
+        {
+            ("Today", new List<ConversationSession>()),
+            ("Yesterday", new List<ConversationSession>()),
+            ("Earlier", new List<ConversationSession>())
+        };
+
+        foreach (var convo in conversations)
+        {
+            var localDate = convo.LastActivityAt.ToLocalTime().Date;
+            var index = localDate == today ? 0 : localDate == today.AddDays(-1) ? 1 : 2;
+            groups[index].Items.Add(convo);
+        }
+
+        return groups.Where(g => g.Items.Count > 0).ToList();
+    }
+
+    private static List<(string Label, List<AgentTaskInfo> Items)> GroupTasksByStatus(IReadOnlyList<AgentTaskInfo> tasks)
+    {
+        var groups = new List<(string Label, List<AgentTaskInfo> Items)>
+        {
+            ("Active", tasks.Where(t => t.Status is AgentTaskStatus.Running or AgentTaskStatus.Pending).ToList()),
+            ("Completed", tasks.Where(t => t.Status == AgentTaskStatus.Completed).ToList()),
+            ("Failed", tasks.Where(t => t.Status is AgentTaskStatus.Failed or AgentTaskStatus.Cancelled).ToList())
+        };
+
+        return groups.Where(g => g.Items.Count > 0).ToList();
+    }
+
+    private static string FormatDuration(DateTime start, DateTime end)
+    {
+        var elapsed = end - start;
+        if (elapsed.TotalMinutes < 1) return $"{Math.Max(1, (int)elapsed.TotalSeconds)} sec";
+        if (elapsed.TotalHours < 1) return $"{(int)elapsed.TotalMinutes} min";
+        return $"{(int)elapsed.TotalHours} hr {(int)elapsed.Minutes} min";
+    }
+
     private async Task ScrollToBottomAsync()
     {
         if (_jsModule == null) return;
@@ -602,6 +901,13 @@
         catch (JSDisconnectedException) { }
         catch (Exception) { }
     }
+
+    private static string GetTaskItemClass(AgentTaskStatus status) => status switch
+    {
+        AgentTaskStatus.Completed => "task-item-completed",
+        AgentTaskStatus.Failed or AgentTaskStatus.Cancelled => "task-item-failed",
+        _ => "task-item-active"
+    };
 
     private static string GetTaskBadgeStyle(AgentTaskStatus status) => status switch
     {

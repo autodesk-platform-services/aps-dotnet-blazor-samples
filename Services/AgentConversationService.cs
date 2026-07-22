@@ -74,6 +74,19 @@ public class AgentConversationService : IAgentConversationService
         await SaveToFileAsync();
     }
 
+    public async Task ClearMessagesAsync(string conversationId)
+    {
+        if (!_conversationsCache.TryGetValue(conversationId, out var session))
+        {
+            _logger.LogWarning("Conversation {ConversationId} not found for ClearMessagesAsync", conversationId);
+            return;
+        }
+
+        session.Messages.Clear();
+        session.LastActivityAt = DateTime.UtcNow;
+        await SaveToFileAsync();
+    }
+
     public Task<ConversationSession?> GetConversationAsync(string conversationId)
     {
         _conversationsCache.TryGetValue(conversationId, out var session);
