@@ -53,9 +53,9 @@ namespace ApsSamples.Tools
             return models.OrderBy(m => m.Name).ToList();
         }
 
-        [Description("Publishes (syncs) a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Automatically tracks the publish as a task (visible in the task panel) and notifies you here once it completes or fails - publishing happens asynchronously and can take a while. Call ListRevitModelsAsync first to get the model's item ID and name.")]
+        [Description("Publishes a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Automatically tracks the publish as a task (visible in the task panel) and notifies you here once it completes or fails - publishing happens asynchronously and can take a while. Call ListUnpublishedModelsAsync first to get the model's item ID and name.")]
         public async Task<string> PublishRevitModelAsync(
-            [Description("Item ID of the Revit model to publish, as returned by ListRevitModelsAsync")] string itemId,
+            [Description("Item ID of the Revit model to publish, as returned by ListUnpublishedModelsAsync")] string itemId,
             [Description("Display name of the model, used for the task and the completion notification")] string modelName)
         {
             var projectId = RequireProjectId();
@@ -145,7 +145,7 @@ namespace ApsSamples.Tools
             };
         }
 
-        [Description("Lists the Revit models in the current project that have never been published successfully - i.e. models with no completed publish job on record. Use this to answer questions like 'which models are unpublished'.")]
+        [Description("Searches for and lists the Revit models in the current project that have changes and can be published again. Use this to answer questions like 'which models are unpublished")]
         public async Task<List<RevitModelInfo>> ListUnpublishedModelsAsync()
         {
             var projectId = RequireProjectId();
@@ -213,7 +213,7 @@ namespace ApsSamples.Tools
                 var request = new HttpRequestMessage(HttpMethod.Post,
                     $"https://developer.api.autodesk.com/data/v1/projects/{projectId}/commands")
                 {
-                    Content = new StringContent(requestBody.ToJsonString(), System.Text.Encoding.UTF8, "application/vnd.api+json")
+                    Content = new StringContent(requestBody.ToJsonString(), System.Text.Encoding.UTF8, "application/json")
                 };
 
                 var response = await httpClient.SendAsync(request);

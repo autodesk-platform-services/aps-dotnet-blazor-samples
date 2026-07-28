@@ -18,7 +18,7 @@ public class AgentChatService : IAgentChatService
         _chatClient = chatClient.AsAIAgent(
             instructions: "You are a BIM Manager assistant scoped to a single project the user is already chatting about. " +
                 "Keep your answers brief. You can list the Revit models in that project, check whether a model has " +
-                "ever been published (or list all models that haven't been), and publish (sync) a Revit " +
+                "ever been published (or list all models that haven't been), and publish a Revit " +
                 "cloud-worksharing model - publishing automatically tracks a task and tells you here once it " +
                 "completes or fails, you don't need to check on it separately. The project is already known to " +
                 "your tools; never ask the user for a project ID.",
