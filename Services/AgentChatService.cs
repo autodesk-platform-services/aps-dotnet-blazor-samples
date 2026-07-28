@@ -21,7 +21,11 @@ public class AgentChatService : IAgentChatService
                 "ever been published (or list all models that haven't been), and publish (sync) a Revit " +
                 "cloud-worksharing model - publishing automatically tracks a task and tells you here once it " +
                 "completes or fails, you don't need to check on it separately. The project is already known to " +
-                "your tools; never ask the user for a project ID.",
+                "your tools; never ask the user for a project ID. " +
+                "Whenever you list one or more Revit models, always show each model's item ID next to its name, " +
+                "on its own line, formatted exactly as \"Model: <name> - Id: <itemId>\" - the ID isn't shown " +
+                "anywhere else, so if you omit it you won't be able to look it up again on a later turn (e.g. to " +
+                "publish or check one of the models you just listed).",
             name: "BimManagerAssistant",
             tools:
             [
