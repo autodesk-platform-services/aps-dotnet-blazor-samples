@@ -133,7 +133,7 @@
         /* Kept well under 100vh (header + the extra "Back to Projects/project name" row above
            this, plus the app footer below it, already take up real space) so the footer stays
            on screen instead of being pushed below the fold. */
-        height: 68vh;
+        height: 85vh;
     }
 
     @@media (max-width: 768px) {
@@ -338,11 +338,11 @@
     }
     else if (_conversation != null)
     {
-        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="16" Class="chat-columns">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="0" Class="chat-columns">
             <FluentStack Orientation="Orientation.Vertical"
                          VerticalGap="8"
                          Class="chat-side-panel"
-                         Style="width: 260px; flex: 0 0 260px; overflow-y: auto; height: 100%; border-right: 1px solid var(--neutral-stroke-rest); padding-right: 12px;">
+                         Style="width: 260px; flex: 0 0 260px; overflow-y: auto; height: 100%; border-right: 1px solid var(--neutral-stroke-rest); padding-right: 10px;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <h3 style="margin: 0;">Conversations</h3>
                 </div>
@@ -379,7 +379,7 @@
                 }
             </FluentStack>
 
-            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%; border: 1px solid var(--neutral-stroke-rest); border-radius: 6px;">
+            <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%;">
                 <div class="chat-center-header">
                     <h2 style="margin: 0;">@GetConversationTitle(_conversation)</h2>
                     <FluentButton Appearance="Appearance.Lightweight" OnClick="ClearChatAsync">
@@ -463,7 +463,7 @@
                                  HorizontalGap="8"
                                  Style="margin-top: 8px;">
                         <span class="chat-input-hint">Enter to send &bull; Shift+Enter for new line</span>
-                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.Center" HorizontalGap="8">
+                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.SpaceBetween" HorizontalGap="8">
                             @if (_isStreaming)
                             {
                                 <FluentProgressRing Style="width: 20px; height: 20px;" />
@@ -483,7 +483,7 @@
             <FluentStack Orientation="Orientation.Vertical"
                          VerticalGap="8"
                          Class="chat-task-panel"
-                         Style="width: 360px; flex: 0 0 360px; overflow-y: auto; height: 100%; border-left: 1px solid var(--neutral-stroke-rest); padding-left: 12px;">
+                         Style="width: 360px; flex: 0 0 360px; overflow-y: auto; height: 100%; border-left: 1px solid var(--neutral-stroke-rest); padding-left: 10px;">
                 <div style="display: flex; align-items: center; justify-content: space-between;">
                     <h3 style="margin: 0;">Tasks</h3>
                     @if (_taskFilterConversationId != null)
