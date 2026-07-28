@@ -3,7 +3,6 @@
 @using ApsSamples.Services
 @using Autodesk.Construction.AccountAdmin
 @using Markdig
-@using Microsoft.AspNetCore.Components.Web
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
 @inject IProjectRoleService RoleService
@@ -450,13 +449,13 @@
                 </div>
 
                 <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
-                    <FluentTextArea @bind-Value="_inputText"
+                    <FluentTextArea @ref="_inputTextArea"
+                                    @bind-Value="_inputText"
                                     Immediate="true"
                                     Placeholder="Ask about this project or request an action..."
                                     Rows="3"
                                     Style="width: 100%;"
-                                    Disabled="_isStreaming"
-                                    @onkeydown="HandleKeyDown" />
+                                    Disabled="_isStreaming" />
                     <FluentStack Orientation="Orientation.Horizontal"
                                  HorizontalAlignment="HorizontalAlignment.SpaceBetween"
                                  VerticalAlignment="VerticalAlignment.Center"
@@ -577,6 +576,8 @@
     private CancellationTokenSource _streamingCts = new();
     private ElementReference _scrollAnchor;
     private IJSObjectReference? _jsModule;
+    private FluentTextArea? _inputTextArea;
+    private DotNetObjectReference<Chat>? _dotNetRef;
 
     private IReadOnlyList<ConversationSession> FilteredConversations => string.IsNullOrWhiteSpace(_conversationSearch)
         ? _conversations
@@ -662,6 +663,12 @@
             _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
                 "./Components/Pages/Chat.razor.js");
 
+            if (_inputTextArea != null)
+            {
+                _dotNetRef = DotNetObjectReference.Create(this);
+                await _jsModule.InvokeVoidAsync("setupEnterToSend", _inputTextArea.Element, _dotNetRef);
+            }
+
             if (_conversation != null && _conversation.Messages.Count > 0)
             {
                 await ScrollToBottomAsync();
@@ -696,14 +703,10 @@
         }
     }
 
-    private async Task HandleKeyDown(KeyboardEventArgs e)
+    [JSInvokable]
+    public async Task SendMessageFromJs()
     {
-        if (e.Key == "Enter" && !e.ShiftKey)
-        {
-            await SendMessage();
-            _inputText = string.Empty;
-            await InvokeAsync(StateHasChanged);
-        }
+        await SendMessage();
     }
 
     private async Task SendMessage()
@@ -938,5 +941,7 @@
             }
             catch (JSDisconnectedException) { }
         }
+
+        _dotNetRef?.Dispose();
     }
 }
