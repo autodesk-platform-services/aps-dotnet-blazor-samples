@@ -28,6 +28,14 @@ namespace ApsSamples.Tools
         public string? ProjectId { get; set; }
         public string? ConversationId { get; set; }
 
+        // The chat model reliably remembers a model's display name across turns but not
+        // necessarily its item ID (that only ever showed up as raw tool output, never in the text
+        // shown to the user, and isn't guaranteed to survive in the conversation history sent back
+        // to the model on later turns). Remember every item ID we've handed out by name, keyed for
+        // the lifetime of this chat session, so later calls resolve the authoritative ID themselves
+        // instead of trusting whatever the model passes back.
+        private readonly Dictionary<string, string> _knownModelItemIds = new(StringComparer.OrdinalIgnoreCase);
+
         [Description("Lists the Revit (.rvt) models found in the current project's folders, recursively. Returns each model's name and item ID (needed to publish it).")]
         public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
         {
@@ -50,8 +58,19 @@ namespace ApsSamples.Tools
                 }
             }
 
+            foreach (var model in models)
+            {
+                _knownModelItemIds[model.Name] = model.ItemId;
+            }
+
             return models.OrderBy(m => m.Name).ToList();
         }
+
+        // If this model name was seen in an earlier ListRevitModelsAsync/ListUnpublishedModelsAsync
+        // call this session, use that item ID instead of whatever the model passed - it's the
+        // source of truth, not the model's recollection of a value it never actually saw in text.
+        private string ResolveItemId(string itemId, string modelName) =>
+            _knownModelItemIds.TryGetValue(modelName, out var knownItemId) ? knownItemId : itemId;
 
         [Description("Publishes (syncs) a Revit cloud-worksharing model in the current project so the latest cloud model becomes available as a new version. Automatically tracks the publish as a task (visible in the task panel) and notifies you here once it completes or fails - publishing happens asynchronously and can take a while. Call ListRevitModelsAsync first to get the model's item ID and name.")]
         public async Task<string> PublishRevitModelAsync(
@@ -62,6 +81,7 @@ namespace ApsSamples.Tools
             var hubId = RequireHubId();
             var conversationId = RequireConversationId();
             var accessToken = session.AccessToken ?? string.Empty;
+            itemId = ResolveItemId(itemId, modelName);
 
             var task = await taskService.CreateTaskAsync(conversationId, projectId, $"Publish: {modelName}");
             task.Status = AgentTaskStatus.Running;
@@ -133,6 +153,7 @@ namespace ApsSamples.Tools
         {
             var projectId = RequireProjectId();
             var accessToken = session.AccessToken ?? string.Empty;
+            itemId = ResolveItemId(itemId, modelName);
 
             var status = await GetLastPublishJobStatusAsync(projectId, itemId, accessToken);
 
