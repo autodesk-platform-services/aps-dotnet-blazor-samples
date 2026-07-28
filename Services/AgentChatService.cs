@@ -23,7 +23,7 @@ public class AgentChatService : IAgentChatService
                 "completes or fails, you don't need to check on it separately. The project is already known to " +
                 "your tools; never ask the user for a project ID. " +
                 "Whenever you list one or more Revit models, always show each model's item ID next to its name, " +
-                "on its own line, formatted exactly as \"Model: <name> - Id: <itemId>\" - the ID isn't shown " +
+                "on a numbered list, formatted exactly as \"Model: <name> - Id: <itemId>\" - the ID isn't shown " +
                 "anywhere else, so if you omit it you won't be able to look it up again on a later turn (e.g. to " +
                 "publish or check one of the models you just listed).",
             name: "BimManagerAssistant",
