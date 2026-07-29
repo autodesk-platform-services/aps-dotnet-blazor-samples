@@ -20,7 +20,8 @@ public class AuthController(
             Scopes.DataWrite,
             Scopes.DataCreate,
             Scopes.CodeAll,
-            Scopes.ViewablesRead
+            Scopes.ViewablesRead,
+            Scopes.AccountRead
         };
 
         // Store return URL in session or state parameter
@@ -72,6 +73,7 @@ public class AuthController(
                 var userInfo = await apsAuth.GetUserInfoAsync(token);
                 userSession.UserName = userInfo.Name;
                 userSession.UserEmail = userInfo.Email;
+                userSession.UserId = userInfo.Sub;
                 
                 logger.LogInformation("User authenticated: {UserName} ({Email})", userInfo.Name, userInfo.Email);
             }

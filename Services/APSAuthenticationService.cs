@@ -13,6 +13,11 @@ public interface IAPSAuthenticationService
     Task<string> RefreshTokenAsync(string refreshToken);
     string GetAuthorizationUrl(List<Scopes> scopes);
     Task<UserInfo> GetUserInfoAsync(string accessToken);
+
+    // App-level (2-legged) token, for server-side lifecycle work that isn't tied to any specific
+    // user's session - e.g. managing webhooks from a background timeout or an incoming webhook
+    // callback, where no user access token is available.
+    Task<string> GetTwoLeggedTokenAsync();
 }
 
 public class APSAuthenticationService : IAPSAuthenticationService
@@ -20,18 +25,19 @@ public class APSAuthenticationService : IAPSAuthenticationService
     private readonly AuthenticationClient _authClient;
     private string? _cachedToken;
     private DateTime _tokenExpiration;
+    private string? _twoLeggedToken;
+    private DateTime _twoLeggedTokenExpiration;
 
     public string ClientId { get; }
     public string ClientSecret { get; }
     public string? CallbackUrl { get; }
 
-    public APSAuthenticationService(string clientId, string clientSecret, string? callbackUrl = null)
+    public APSAuthenticationService(AuthenticationClient authClient, string clientId, string clientSecret, string? callbackUrl = null)
     {
         ClientId = clientId ?? throw new ArgumentNullException(nameof(clientId));
         ClientSecret = clientSecret ?? throw new ArgumentNullException(nameof(clientSecret));
         CallbackUrl = callbackUrl;
-        var sdkManager = SdkManagerBuilder.Create().Build();
-        _authClient = new AuthenticationClient(sdkManager);
+        _authClient = authClient;
         _tokenExpiration = DateTime.MinValue;
     }
 
@@ -68,5 +74,23 @@ public class APSAuthenticationService : IAPSAuthenticationService
     public async Task<UserInfo> GetUserInfoAsync(string accessToken)
     {
         return await _authClient.GetUserInfoAsync(accessToken);
+    }
+
+    public async Task<string> GetTwoLeggedTokenAsync()
+    {
+        if (_twoLeggedToken != null && DateTime.UtcNow < _twoLeggedTokenExpiration)
+        {
+            return _twoLeggedToken;
+        }
+
+        var token = await _authClient.GetTwoLeggedTokenAsync(
+            ClientId,
+            ClientSecret,
+            new List<Scopes> { Scopes.DataRead, Scopes.DataWrite });
+
+        _twoLeggedToken = token.AccessToken;
+        _twoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds((token.ExpiresIn ?? 3600) - 60);
+
+        return _twoLeggedToken;
     }
 }
