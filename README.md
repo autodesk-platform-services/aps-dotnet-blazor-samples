@@ -9,12 +9,13 @@
 
 ---
 
-A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases four key capabilities powered by the **APS Automation API**, **Data Management API**, and **Forma APIs**:
+A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases five key capabilities powered by the **APS Automation API**, **Data Management API**, **Forma APIs**, and **AI-powered assistants**:
 
 - **Create Revit Models** – Programmatically create Revit cloud models inside Forma for Construction) projects.
 - **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
 - **Create Sheets** – Batch-create sheets in Revit cloud models.
 - **View Models** – Select a Revit cloud model and render it interactively in the browser using the APS Viewer with Blazor JavaScript Interoperability.
+- **AI Assistants** – Chat with an AI-powered BIM Manager assistant to automate Revit model management tasks. The assistant can list models, check publish status, and publish cloud-worksharing models through natural language conversation. Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
 
 The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their hubs of Forma for Construction and projects through a folder explorer, configure automation jobs, and track their real-time status.
 
@@ -30,12 +31,13 @@ The app uses 3-legged OAuth to authenticate users via their Autodesk account, th
 ## Usage
 
 1. Sign in with your Autodesk account via the **Sign In** button on the home page.
-2. Choose one of the four workflows from the home page cards:
+2. Choose one of the five workflows from the home page cards:
    - **Create Revit Models** – select a project and target folder, fill in the model configuration, and submit.
    - **Manage Revit Links** – select a project, build a link matrix between models, and apply it.
    - **Create Sheets** – select a project and Revit model, define the sheet list, and submit.
    - **View Models** – select a project, then select a .rvt model from the list to render it in the APS Viewer.
-3. For the three automation workflows (Create Revit Models, Manage Revit Links, Create Sheets), track job progress on the corresponding tracking page; results are updated in real time. **View Models** is read-only and has no tracking page.
+   - **AI Assistants** – select a project, start or continue a conversation with the BIM Manager assistant, and interact through natural language to list models, check publish status, or publish cloud-worksharing models.
+3. For the automation workflows (Create Revit Models, Manage Revit Links, Create Sheets, and AI Assistants), track job progress on the corresponding tracking page or task panel; results are updated in real time. **View Models** is read-only and has no tracking page.
 
 https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
@@ -54,6 +56,10 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 - **Automation Activity** deployed for [APS Automation API Revit MCP Tools Sample](https://github.com/autodesk-platform-services/aps-automation-api-revit-mcp-tools-sample)
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
 - A valid **Callback URL** registered on your APS app (e.g. `https://localhost:7000/api/auth/callback`)
+- **[Ollama](https://ollama.com/)** installed and running locally (or accessible remote endpoint) with a language model that supports function calling (e.g., `llama3.1:8b`)
+- **[ngrok](https://ngrok.com/)** (or similar tunneling tool) for exposing webhook endpoints to receive publish completion callbacks
+
+> **Note:** The AI Assistants feature requires a BIM Manager role on the selected project. This role requirement can be modified in the code (`ProjectRoleService`) to add additional roles. The LLM must support function calling for the assistant's tools to work properly.
 
 ---
 
@@ -77,6 +83,13 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
        "ClientSecret": "<your-client-secret>",
        "CallbackUrl": "https://localhost:<port>/api/auth/callback",
        "RevitAutomationActivity": "<your-activity-alias>"
+     },
+     "Agent": {
+       "ModelName": "llama3.1:8b",
+       "OllamaEndpoint": "http://localhost:11434"
+     },
+     "Webhooks": {
+       "CallbackUrl": "<ngrok-url>/api/webhooks/version-added"
      }
    }
    ```
@@ -88,6 +101,9 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
    dotnet user-secrets set "Forge:ClientSecret" "<your-client-secret>"
    dotnet user-secrets set "Forge:CallbackUrl" "https://localhost:<port>/api/auth/callback"
    dotnet user-secrets set "Forge:RevitAutomationActivity" "<your-activity-alias>"
+   dotnet user-secrets set "Agent:ModelName" "llama3.1:8b"
+   dotnet user-secrets set "Agent:OllamaEndpoint" "http://localhost:11434"
+   dotnet user-secrets set "Webhooks:CallbackUrl" "<ngrok-url>/api/webhooks/version-added"
    ```
 
 3. **Run the application**
@@ -104,15 +120,19 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
 When deploying to a hosting environment (e.g. Azure App Service):
 
-- Set the four `Forge:*` values as environment variables or application settings.
+- Set the `Forge:*`, `Agent:*`, and `Webhooks:*` configuration values as environment variables or application settings.
 - Ensure the **Callback URL** registered on your APS app matches the deployed URL.
+- Configure the `Webhooks:CallbackUrl` to point to your deployed application's webhook endpoint (no longer using ngrok in production).
 - Automation API workitems use ngrok-style HTTP callbacks on the `/da` path — configure any reverse proxy to pass that path through without HTTPS redirection.
 - The `GET /api/auth/viewer-token` endpoint is called from the browser by the APS Viewer and must be reachable over HTTPS on the deployed origin.
 
 ### Known limitations
 
-- Job status is stored in-memory; restarting the application clears pending job history.
+- Job status for Create Revit Models, Manage Revit Links, and Create Sheets is stored in-memory; restarting the application clears pending job history.
+- AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This can be changed to database storage if needed.
+- The AI Assistants feature requires the BIM Manager role on the selected project. Additional roles can be configured in the code by modifying `ProjectRoleService`.
 - The Automation API activity must already exist and be published before running the sample.
+- Ollama must be running and accessible for the AI Assistants feature to function.
 
 ### Additional resources
 
@@ -121,6 +141,8 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - [Data Management API](https://aps.autodesk.com/en/docs/data/v2/developers_guide/overview/)
 - [Model Derivative API](https://aps.autodesk.com/en/docs/model-derivative/v2/developers_guide/overview/)
 - [APS Viewer](https://aps.autodesk.com/en/docs/viewer/v7/developers_guide/overview/)
+- [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/)
+- [Ollama](https://ollama.com/)
 
 ---
 
