@@ -348,6 +348,13 @@ namespace ApsSamples.Tools
             }
 
             var responseBody = await response.Content.ReadAsStringAsync();
+
+            // Check if response body is empty or whitespace
+            if (string.IsNullOrWhiteSpace(responseBody))
+            {
+                return null;
+            }
+
             return JsonSerializer.Deserialize<HookDetails>(responseBody,
                 new JsonSerializerOptions { PropertyNamingPolicy = JsonNamingPolicy.CamelCase })?.HookId;
         }
