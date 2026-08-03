@@ -743,7 +743,7 @@
 
         try
         {
-            await foreach (var token in ChatService.StreamResponseAsync(_conversation.Messages, _streamingCts.Token))
+            await foreach (var token in ChatService.StreamResponseAsync(text, _streamingCts.Token))
             {
                 assistantMessage.Content += token;
                 await InvokeAsync(StateHasChanged);
@@ -789,6 +789,7 @@
         if (_conversation == null) return;
 
         await ConversationService.ClearMessagesAsync(_conversation.ConversationId);
+        await ChatService.ResetSessionAsync(_conversation.ConversationId);
         _conversation.Messages.Clear();
         await InvokeAsync(StateHasChanged);
     }

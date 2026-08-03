@@ -8,4 +8,5 @@ public class ConversationSession
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
     public List<ConversationMessage> Messages { get; set; } = new();
+    public System.Text.Json.JsonElement? SerializedAgentSession { get; set; }
 }
