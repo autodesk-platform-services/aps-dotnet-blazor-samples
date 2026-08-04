@@ -627,10 +627,10 @@
         await LoadProjectNameAsync();
 
         _userId = UserSession.UserEmail ?? UserSession.UserName ?? "unknown";
-        _conversations = (await ConversationService.GetConversationsAsync(ProjectId, _userId)).ToList();
+        _conversations = (await ConversationService.GetConversationsAsync(ProjectId, _userId, string.Empty)).ToList();
         if (_conversations.Count == 0)
         {
-            _conversations.Add(await ConversationService.CreateConversationAsync(ProjectId, _userId));
+            _conversations.Add(await ConversationService.CreateConversationAsync(ProjectId, _userId, string.Empty));
         }
 
         _conversation = _conversations[0];
@@ -770,7 +770,7 @@
     {
         if (ProjectId == null || _userId == null) return;
 
-        var created = await ConversationService.CreateConversationAsync(ProjectId, _userId);
+        var created = await ConversationService.CreateConversationAsync(ProjectId, _userId, string.Empty);
         _conversations.Insert(0, created);
         await SelectConversationAsync(created);
     }
