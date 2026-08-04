@@ -120,25 +120,7 @@
             @if (_wizardStep == 1)
             {
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Company</h3>
-                    <p style="color: var(--neutral-foreground-hint); margin: 0;">
-                        Optional. Leave blank if the project has no companies configured.
-                    </p>
-
-                    <FluentSelect TOption="CompanyInfo"
-                                  Items="@_companies"
-                                  OptionValue="@(c => c.CompanyId)"
-                                  OptionText="@(c => c.CompanyName)"
-                                  @bind-Value="_selectedCompanyId"
-                                  Label="Company"
-                                  Placeholder="Select company (optional)..."
-                                  Style="width: 100%;" />
-                </FluentStack>
-            }
-            else if (_wizardStep == 2)
-            {
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 2 of 3 &mdash; Instructions</h3>
+                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Agent Details</h3>
 
                     <FluentSelect TOption="ProjectRoleInfo"
                                   Items="@_availableRoles"
@@ -160,6 +142,15 @@
                         </div>
                     }
 
+                    <FluentSelect TOption="CompanyInfo"
+                                  Items="@_companies"
+                                  OptionValue="@(c => c.CompanyId)"
+                                  OptionText="@(c => c.CompanyName)"
+                                  @bind-Value="_selectedCompanyId"
+                                  Label="Company (optional)"
+                                  Placeholder="Select company (optional)..."
+                                  Style="width: 100%;" />
+
                     <FluentTextArea @bind-Value="_instructionsText"
                                     Label="Instructions"
                                     Placeholder="@_instructionsPlaceholder"
@@ -167,41 +158,61 @@
                                     Style="width: 100%;" />
                 </FluentStack>
             }
+            else if (_wizardStep == 2)
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <h3 style="margin: 0;">Step 2 of 3 &mdash; Forma Products</h3>
+                    <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                        Grant the agent access to the following Forma products in this project.
+                    </p>
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        @foreach (var product in FormaProducts)
+                        {
+                            <FluentCheckbox Label="@product.Label"
+                                            Value="@_selectedProductKeys.Contains(product.Key)"
+                                            ValueChanged="@((bool v) => ToggleProduct(product.Key, v))" />
+                        }
+                    </FluentStack>
+                </FluentStack>
+            }
             else if (_wizardStep == 3)
             {
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 3 of 3 &mdash; Tools &amp; Products</h3>
-                    <p style="color: var(--neutral-foreground-hint); margin: 0;">
-                        Select at least one tool. The agent will invoke these to perform tasks.
-                    </p>
-                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
-                        @foreach (var tool in _allTools)
-                        {
-                            <FluentCard Style="padding: 12px;">
-                                <FluentCheckbox Label="@tool.DisplayName"
-                                                Value="@_selectedToolIds.Contains(tool.ToolId)"
-                                                ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
-                                <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
-                                    @tool.Description
-                                </div>
-                            </FluentCard>
-                        }
-                    </FluentStack>
-
-                    <div>
-                        <strong>ACC Products</strong>
-                        <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-bottom: 8px;">
-                            Grant the agent access to the following ACC products in this project.
+                    <h3 style="margin: 0;">Step 3 of 3 &mdash; Tools</h3>
+                    <FluentCard Style="height: 420px; padding: 16px; display: flex; flex-direction: column;">
+                        <p style="color: var(--neutral-foreground-hint); margin: 0 0 12px 0;">
+                            Select at least one tool. The agent will invoke these to perform tasks.
+                        </p>
+                        <FluentTextField @bind-Value="_toolSearchText"
+                                          Placeholder="Search tools..."
+                                          Style="width: 100%; margin-bottom: 12px; flex-shrink: 0;" />
+                        <div style="flex: 1; overflow-y: auto;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                                @foreach (var tool in FilteredTools)
+                                {
+                                    <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
+                                        <FluentCheckbox Label="@tool.DisplayName"
+                                                        Value="@_selectedToolIds.Contains(tool.ToolId)"
+                                                        ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
+                                        <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
+                                              @onclick="@(() => ToggleDetails(tool.ToolId))">
+                                            @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
+                                        </span>
+                                        @if (_expandedToolIds.Contains(tool.ToolId))
+                                        {
+                                            <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
+                                                @tool.Description
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (!FilteredTools.Any())
+                                {
+                                    <span style="color: var(--neutral-foreground-hint); font-size: 13px;">No tools match your search.</span>
+                                }
+                            </FluentStack>
                         </div>
-                        <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
-                            @foreach (var product in AccProducts)
-                            {
-                                <FluentCheckbox Label="@product.Label"
-                                                Value="@_selectedProductKeys.Contains(product.Key)"
-                                                ValueChanged="@((bool v) => ToggleProduct(product.Key, v))" />
-                            }
-                        </FluentStack>
-                    </div>
+                    </FluentCard>
                 </FluentStack>
             }
         }
@@ -246,7 +257,7 @@
 
     private const int MaxAgents = 10;
 
-    private static readonly (string Key, string Label)[] AccProducts = new[]
+    private static readonly (string Key, string Label)[] FormaProducts = new[]
     {
         ("documentManagement", "Document Management"),
         ("designCollaboration", "Design Collaboration"),
@@ -283,6 +294,15 @@
     private HashSet<string> _selectedToolIds = new();
     private string _selectedCompanyId = string.Empty;
     private HashSet<string> _selectedProductKeys = new();
+    private string _toolSearchText = string.Empty;
+    private HashSet<string> _expandedToolIds = new();
+
+    private IEnumerable<ToolDescriptor> FilteredTools =>
+        string.IsNullOrWhiteSpace(_toolSearchText)
+            ? _allTools
+            : _allTools.Where(t =>
+                t.DisplayName.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase)
+                || t.Description.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase));
 
     protected override async Task OnInitializedAsync()
     {
@@ -400,6 +420,8 @@
         _selectedToolIds.Clear();
         _selectedCompanyId = string.Empty;
         _selectedProductKeys.Clear();
+        _toolSearchText = string.Empty;
+        _expandedToolIds.Clear();
         _hideWizard = false;
         StateHasChanged();
     }
@@ -438,12 +460,20 @@
         else _selectedProductKeys.Remove(key);
     }
 
+    private void ToggleDetails(string toolId)
+    {
+        if (!_expandedToolIds.Add(toolId))
+        {
+            _expandedToolIds.Remove(toolId);
+        }
+    }
+
     private bool CanAdvance()
     {
         return _wizardStep switch
         {
-            1 => true, // Company selection is optional
-            2 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
+            1 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
+            2 => _selectedProductKeys.Count > 0,
             _ => true
         };
     }
