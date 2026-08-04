@@ -120,7 +120,25 @@
             @if (_wizardStep == 1)
             {
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Instructions</h3>
+                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Company</h3>
+                    <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                        Optional. Leave blank if the project has no companies configured.
+                    </p>
+
+                    <FluentSelect TOption="CompanyInfo"
+                                  Items="@_companies"
+                                  OptionValue="@(c => c.CompanyId)"
+                                  OptionText="@(c => c.CompanyName)"
+                                  @bind-Value="_selectedCompanyId"
+                                  Label="Company"
+                                  Placeholder="Select company (optional)..."
+                                  Style="width: 100%;" />
+                </FluentStack>
+            }
+            else if (_wizardStep == 2)
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <h3 style="margin: 0;">Step 2 of 3 &mdash; Instructions</h3>
 
                     <FluentSelect TOption="ProjectRoleInfo"
                                   Items="@_availableRoles"
@@ -149,10 +167,10 @@
                                     Style="width: 100%;" />
                 </FluentStack>
             }
-            else if (_wizardStep == 2)
+            else if (_wizardStep == 3)
             {
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 2 of 3 &mdash; Tools</h3>
+                    <h3 style="margin: 0;">Step 3 of 3 &mdash; Tools &amp; Products</h3>
                     <p style="color: var(--neutral-foreground-hint); margin: 0;">
                         Select at least one tool. The agent will invoke these to perform tasks.
                     </p>
@@ -169,21 +187,6 @@
                             </FluentCard>
                         }
                     </FluentStack>
-                </FluentStack>
-            }
-            else if (_wizardStep == 3)
-            {
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 3 of 3 &mdash; Company &amp; Products</h3>
-
-                    <FluentSelect TOption="CompanyInfo"
-                                  Items="@_companies"
-                                  OptionValue="@(c => c.CompanyId)"
-                                  OptionText="@(c => c.CompanyName)"
-                                  @bind-Value="_selectedCompanyId"
-                                  Label="Company"
-                                  Placeholder="Select company..."
-                                  Style="width: 100%;" />
 
                     <div>
                         <strong>ACC Products</strong>
@@ -439,8 +442,8 @@
     {
         return _wizardStep switch
         {
-            1 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
-            2 => _selectedToolIds.Count > 0,
+            1 => true, // Company selection is optional
+            2 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
             _ => true
         };
     }
@@ -450,7 +453,6 @@
         return !string.IsNullOrEmpty(_selectedRoleId)
                && !string.IsNullOrWhiteSpace(_instructionsText)
                && _selectedToolIds.Count > 0
-               && !string.IsNullOrEmpty(_selectedCompanyId)
                && _selectedProductKeys.Count > 0;
     }
 

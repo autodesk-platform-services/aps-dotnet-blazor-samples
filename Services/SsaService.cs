@@ -202,7 +202,7 @@ public class SsaService : ISsaService
         return accessToken;
     }
 
-    public async Task AddSsaToProjectAsync(string projectId, string ssaEmail, string companyId, List<string> roleIds, List<string> productKeys)
+    public async Task AddSsaToProjectAsync(string projectId, string ssaEmail, string? companyId, List<string> roleIds, List<string> productKeys)
     {
         var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
 
@@ -214,7 +214,7 @@ public class SsaService : ISsaService
         var payload = new ProjectUserPayload
         {
             Email = ssaEmail,
-            CompanyId = companyId,
+            CompanyId = string.IsNullOrEmpty(companyId) ? null : companyId,
             RoleIds = roleIds,
             Products = productKeys
                 .Select(k => new ProjectUserPayloadProducts
