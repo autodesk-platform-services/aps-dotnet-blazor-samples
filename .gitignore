@@ -174,3 +174,6 @@ $RECYCLE.BIN/
 !.env.example
 secrets.*
 /Data
+
+# APS SSA private keys (sample repo — do not commit)
+Data/ssa-keys.json
