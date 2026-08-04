@@ -5,7 +5,6 @@ using System.Text;
 using System.Text.Json;
 using Autodesk.Construction.AccountAdmin;
 using Autodesk.Construction.AccountAdmin.Model;
-using Autodesk.SDKManager;
 using Autodesk.SecureServiceAccount.Http;
 using Autodesk.SecureServiceAccount.Model;
 using Microsoft.IdentityModel.Tokens;
@@ -34,10 +33,11 @@ public class SsaService : ISsaService
     private readonly SemaphoreSlim _tokenCacheLock = new(1, 1);
 
     public SsaService(
-        SDKManager sdkManager,
         IAPSAuthenticationService auth,
         IConfiguration configuration,
         AdminClient adminClient,
+        AccountManagementApi accountApi,
+        KeyManagementApi keyApi,
         ILogger<SsaService> logger)
     {
         _auth = auth;
@@ -45,8 +45,8 @@ public class SsaService : ISsaService
         _adminClient = adminClient;
         _logger = logger;
 
-        _accountApi = new AccountManagementApi(sdkManager);
-        _keyApi = new KeyManagementApi(sdkManager);
+        _accountApi = accountApi;
+        _keyApi = keyApi;
 
         var dataDirectory = Path.Combine(Directory.GetCurrentDirectory(), "Data");
         Directory.CreateDirectory(dataDirectory);
