@@ -2,38 +2,28 @@ using ApsSamples.Models;
 using ApsSamples.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using Microsoft.Extensions.Options;
 using System.Runtime.CompilerServices;
 
 namespace ApsSamples.Services;
 
 public class AgentChatService : IAgentChatService
 {
-    private readonly AIAgent _chatClient;
+    private readonly IChatClient _chatClient;
+    private readonly IAgentRegistryService _agentRegistry;
+    private readonly IToolCatalogService _toolCatalog;
     private readonly BimManagerAssistantTools _bimManagerAssistantTools;
+    private AIAgent? _agent;
 
-    public AgentChatService(IChatClient chatClient, IOptions<AgentOptions> options, BimManagerAssistantTools bimManagerAssistantTools)
+    public AgentChatService(
+        IChatClient chatClient,
+        IAgentRegistryService agentRegistry,
+        IToolCatalogService toolCatalog,
+        BimManagerAssistantTools bimManagerAssistantTools)
     {
+        _chatClient = chatClient;
+        _agentRegistry = agentRegistry;
+        _toolCatalog = toolCatalog;
         _bimManagerAssistantTools = bimManagerAssistantTools;
-        _chatClient = chatClient.AsAIAgent(
-            instructions: "You are a BIM Manager assistant scoped to a single project the user is already chatting about. " +
-                "Keep your answers brief. You can list the Revit models in that project, check whether a model has " +
-                "ever been published (or list all models that haven't been), and publish a Revit " +
-                "cloud-worksharing model - publishing automatically tracks a task and tells you here once it " +
-                "completes or fails, you don't need to check on it separately. The project is already known to " +
-                "your tools; never ask the user for a project ID. " +
-                "Whenever you list one or more Revit models, always show each model's item ID next to its name, " +
-                "on a numbered list, formatted exactly as \"Model: <name> - Id: <itemId>\" - the ID isn't shown " +
-                "anywhere else, so if you omit it you won't be able to look it up again on a later turn (e.g. to " +
-                "publish or check one of the models you just listed).",
-            name: "BimManagerAssistant",
-            tools:
-            [
-                AIFunctionFactory.Create(bimManagerAssistantTools.ListRevitModelsAsync),
-                AIFunctionFactory.Create(bimManagerAssistantTools.PublishRevitModelAsync),
-                AIFunctionFactory.Create(bimManagerAssistantTools.CheckModelPublishEligibilityAsync),
-                AIFunctionFactory.Create(bimManagerAssistantTools.ListUnpublishedModelsAsync)
-            ]);
     }
 
     public void SetHubContext(string hubId)
@@ -51,13 +41,31 @@ public class AgentChatService : IAgentChatService
         _bimManagerAssistantTools.ConversationId = conversationId;
     }
 
+    public async Task SetAgentContextAsync(string agentId)
+    {
+        var def = await _agentRegistry.GetAgentAsync(agentId)
+            ?? throw new InvalidOperationException($"Agent '{agentId}' not found.");
+
+        _bimManagerAssistantTools.AgentId = agentId;
+
+        _agent = _chatClient.AsAIAgent(
+            instructions: def.InstructionsText,
+            name: def.AgentName,
+            tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
+    }
+
     public async IAsyncEnumerable<string> StreamResponseAsync(
             IList<ConversationMessage> history,
             [EnumeratorCancellation] CancellationToken ct = default)
     {
+        if (_agent is null)
+        {
+            throw new InvalidOperationException("Agent context not set. Call SetAgentContextAsync before streaming.");
+        }
+
         var messages = history.Select(Map).ToList();
 
-        await foreach (var update in _chatClient.RunStreamingAsync(messages, cancellationToken: ct))
+        await foreach (var update in _agent.RunStreamingAsync(messages, cancellationToken: ct))
         {
             var text = update.Text;
             if (!string.IsNullOrEmpty(text))
