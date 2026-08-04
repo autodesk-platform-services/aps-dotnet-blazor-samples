@@ -73,7 +73,12 @@ public static class AutodeskServiceExtensions
         // Register a service to handle authentication token management
         services.AddScoped<IAPSAuthenticationService, APSAuthenticationService>(sp =>
         {
-            return new APSAuthenticationService(sp.GetRequiredService<AuthenticationClient>(), clientId, clientSecret, callbackUrl);
+            return new APSAuthenticationService(
+                sp.GetRequiredService<AuthenticationClient>(),
+                sp.GetRequiredService<IConfiguration>(),
+                clientId,
+                clientSecret,
+                callbackUrl);
         });
 
         // Register Data Management API client
