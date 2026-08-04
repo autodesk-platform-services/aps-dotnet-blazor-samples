@@ -3,6 +3,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ApsSamples.Models;
 using Autodesk.Construction.AccountAdmin;
+using Autodesk.Construction.AccountAdmin.Model;
 
 namespace ApsSamples.Services;
 
@@ -18,6 +19,7 @@ public class ProjectRoleService(
     ILogger<ProjectRoleService> logger) : IProjectRoleService
 {
     private readonly Dictionary<string, IReadOnlyList<string>> _cache = new();
+    private readonly Dictionary<string, ProjectUserAccessLevels?> _accessLevelsCache = new();
     private readonly Dictionary<string, IReadOnlyList<ProjectRoleInfo>> _allRolesCache = new();
 
     public async Task<IReadOnlyList<string>> GetProjectRolesAsync(string projectId, string userId, string accessToken)
@@ -29,15 +31,7 @@ public class ProjectRoleService(
 
         try
         {
-            // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
-            var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
-                ? projectId[2..]
-                : projectId;
-
-            var projectUser = await adminClient.GetProjectUserAsync(
-                projectId: accountProjectId,
-                userId: userId,
-                accessToken: accessToken);
+            var projectUser = await GetProjectUserAsync(projectId, userId, accessToken);
 
             var roles = projectUser?.Roles?
                 .Select(r => r.Name ?? string.Empty)
@@ -63,8 +57,38 @@ public class ProjectRoleService(
 
     public async Task<bool> IsProjectAdminAsync(string projectId, string userId, string accessToken)
     {
-        var roles = await GetProjectRolesAsync(projectId, userId, accessToken);
-        return roles.Any(r => string.Equals(r, RoleNames.ProjectAdmin, StringComparison.OrdinalIgnoreCase));
+        if (!_accessLevelsCache.TryGetValue(projectId, out var accessLevels))
+        {
+            try
+            {
+                var projectUser = await GetProjectUserAsync(projectId, userId, accessToken);
+                accessLevels = projectUser?.AccessLevels;
+            }
+            catch (Exception ex)
+            {
+                logger.LogError(ex, "Error fetching access levels for project {ProjectId}", projectId);
+                accessLevels = null;
+            }
+
+            _accessLevelsCache[projectId] = accessLevels;
+        }
+
+        // Project admin access is determined by the "Project Administrator" access level,
+        // not by role name (project roles are unrelated to admin permissions).
+        return accessLevels?.ProjectAdmin == true;
+    }
+
+    private async Task<ProjectUser?> GetProjectUserAsync(string projectId, string userId, string accessToken)
+    {
+        // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
+        var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+            ? projectId[2..]
+            : projectId;
+
+        return await adminClient.GetProjectUserAsync(
+            projectId: accountProjectId,
+            userId: userId,
+            accessToken: accessToken);
     }
 
     public async Task<IReadOnlyList<ProjectRoleInfo>> GetAllProjectRolesAsync(string projectId, string accessToken)
