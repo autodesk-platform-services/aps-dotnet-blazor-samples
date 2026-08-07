@@ -1,0 +1,665 @@
+@page "/agents/{ProjectId}"
+@using ApsSamples.Models
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject IProjectRoleService RoleService
+@inject IAgentRegistryService AgentRegistryService
+@inject ISsaService SsaService
+@inject IToolCatalogService ToolCatalogService
+@inject ICompanyService CompanyService
+@inject NavigationManager NavigationManager
+@inject DataManagementClient DataManagementClient
+@rendermode InteractiveServer
+
+<PageTitle>Agents - @(_projectName ?? "Project")</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <FluentButton Appearance="Appearance.Lightweight"
+                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
+                  OnClick="@(() => NavigationManager.NavigateTo("/agents-projects"))">
+        Back to Projects
+    </FluentButton>
+
+    <div>
+        <h1>Agents</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+
+    @if (_isLoading)
+    {
+        <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
+            <FluentProgressRing />
+            <span>Loading agents...</span>
+        </FluentStack>
+    }
+    else
+    {
+        @if (!string.IsNullOrEmpty(_errorMessage))
+        {
+            <FluentMessageBar Intent="MessageIntent.Error">@_errorMessage</FluentMessageBar>
+        }
+
+        @if (!string.IsNullOrEmpty(_infoMessage))
+        {
+            <FluentMessageBar Intent="MessageIntent.Success">@_infoMessage</FluentMessageBar>
+        }
+
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+            <FluentButton Appearance="Appearance.Accent"
+                          IconStart="@(new Icons.Regular.Size20.Add())"
+                          OnClick="OpenCreateWizard"
+                          Disabled="@(_agents.Count >= MaxAgents)"
+                          Title="@(_agents.Count >= MaxAgents ? "Maximum 10 agents reached (APS SSA limit)" : "Create a new agent")">
+                Create New Agent
+            </FluentButton>
+            <span style="color: var(--neutral-foreground-hint); font-size: 13px;">
+                @_agents.Count / @MaxAgents agents configured
+            </span>
+            <FluentButton Appearance="Appearance.Outline"
+                          IconStart="@(new Icons.Regular.Size20.Delete())"
+                          Disabled="@_deletingAllSsas"
+                          OnClick="DeleteAllSsaAccounts"
+                          Title="TEMPORARY: fetches every SSA account on this app and deletes them all">
+                @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
+            </FluentButton>
+        </FluentStack>
+
+        @if (_agents.Any())
+        {
+            <FluentDataGrid Items="@_agents.AsQueryable()"
+                            ResizableColumns="true"
+                            RowSize="DataGridRowSize.Medium"
+                            Style="width: 100%;">
+                <PropertyColumn Property="@(a => a.AgentName)" Sortable="true" Title="Agent Name" />
+                <PropertyColumn Property="@(a => a.RoleName)" Sortable="true" Title="Role" />
+                <PropertyColumn Property="@(a => a.CreatedAt)" Sortable="true" Title="Created At" Format="yyyy-MM-dd HH:mm" />
+                <TemplateColumn Title="Actions">
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.Delete())"
+                                  Disabled="@(_deletingAgentId == context.AgentId)"
+                                  OnClick="@(() => DeleteAgent(context))"
+                                  Title="Delete agent">
+                        @(_deletingAgentId == context.AgentId ? "Deleting..." : "Delete")
+                    </FluentButton>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+        else
+        {
+            <FluentMessageBar Intent="MessageIntent.Info">
+                No agents configured yet. Click "Create New Agent" to add one.
+            </FluentMessageBar>
+        }
+    }
+</FluentStack>
+
+<FluentDialog @bind-Hidden="@_hideWizard"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 720px; max-width: 90vw;">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Create New Agent</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        @if (_wizardBusy)
+        {
+            <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 30px;">
+                <FluentProgressRing />
+                <span>Creating agent (this may take up to a minute)...</span>
+            </FluentStack>
+        }
+        else
+        {
+            @if (!string.IsNullOrEmpty(_wizardError))
+            {
+                <FluentMessageBar Intent="MessageIntent.Error">@_wizardError</FluentMessageBar>
+            }
+
+            @if (_wizardStep == 1)
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Agent Details</h3>
+
+                    <FluentSelect TOption="ProjectRoleInfo"
+                                  Items="@_availableRoles"
+                                  OptionValue="@(r => r.RoleId)"
+                                  OptionText="@(r => r.RoleName)"
+                                  Value="@_selectedRoleId"
+                                  ValueChanged="@OnRoleChanged"
+                                  Label="Project Role"
+                                  Placeholder="Select role..."
+                                  Style="width: 100%;" />
+
+                    @if (!string.IsNullOrEmpty(_selectedRoleName))
+                    {
+                        <div>
+                            <strong>Agent Name:</strong>
+                            <span style="color: var(--neutral-foreground-hint); margin-left: 8px;">
+                                @($"{_selectedRoleName} Assistant")
+                            </span>
+                        </div>
+                    }
+
+                    <FluentSelect TOption="CompanyInfo"
+                                  Items="@_companies"
+                                  OptionValue="@(c => c.CompanyId)"
+                                  OptionText="@(c => c.CompanyName)"
+                                  @bind-Value="_selectedCompanyId"
+                                  Label="Company (optional)"
+                                  Placeholder="Select company (optional)..."
+                                  Style="width: 100%;" />
+
+                    <FluentTextArea @bind-Value="_instructionsText"
+                                    Label="Instructions"
+                                    Placeholder="@_instructionsPlaceholder"
+                                    Rows="8"
+                                    Style="width: 100%;" />
+                </FluentStack>
+            }
+            else if (_wizardStep == 2)
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <h3 style="margin: 0;">Step 2 of 3 &mdash; Forma Products</h3>
+                    <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                        Grant the agent access to the following Forma products in this project.
+                    </p>
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentCheckbox Label="Data Management"
+                                        Value="true"
+                                        Disabled="true"
+                                        title="Granted by default; not part of the product selection sent to APS." />
+                        @foreach (var product in FormaProducts)
+                        {
+                            <FluentCheckbox Label="@product.Label"
+                                            Value="@_selectedProductKeys.Contains(product.Key)"
+                                            ValueChanged="@((bool v) => ToggleProduct(product.Key, v))" />
+                        }
+                    </FluentStack>
+                </FluentStack>
+            }
+            else if (_wizardStep == 3)
+            {
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <h3 style="margin: 0;">Step 3 of 3 &mdash; Tools</h3>
+                    <FluentCard Style="height: 420px; padding: 16px; display: flex; flex-direction: column;">
+                        <p style="color: var(--neutral-foreground-hint); margin: 0 0 12px 0;">
+                            Select at least one tool. The agent will invoke these to perform tasks.
+                        </p>
+                        <FluentTextField @bind-Value="_toolSearchText"
+                                          Placeholder="Search tools..."
+                                          Style="width: 100%; margin-bottom: 12px; flex-shrink: 0;" />
+                        <div style="flex: 1; overflow-y: auto;">
+                            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                                @foreach (var tool in FilteredTools)
+                                {
+                                    <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
+                                        <FluentCheckbox Label="@tool.DisplayName"
+                                                        Value="@_selectedToolIds.Contains(tool.ToolId)"
+                                                        ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
+                                        <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
+                                              @onclick="@(() => ToggleDetails(tool.ToolId))">
+                                            @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
+                                        </span>
+                                        @if (_expandedToolIds.Contains(tool.ToolId))
+                                        {
+                                            <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
+                                                @tool.Description
+                                            </div>
+                                        }
+                                    </div>
+                                }
+                                @if (!FilteredTools.Any())
+                                {
+                                    <span style="color: var(--neutral-foreground-hint); font-size: 13px;">No tools match your search.</span>
+                                }
+                            </FluentStack>
+                        </div>
+                    </FluentCard>
+                </FluentStack>
+            }
+        }
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        @if (!_wizardBusy)
+        {
+            <FluentButton Appearance="Appearance.Neutral" OnClick="CancelWizard">Cancel</FluentButton>
+            @if (_wizardStep > 1)
+            {
+                <FluentButton Appearance="Appearance.Neutral"
+                              IconStart="@(new Icons.Regular.Size16.ArrowLeft())"
+                              OnClick="PreviousStep">
+                    Back
+                </FluentButton>
+            }
+            @if (_wizardStep < 3)
+            {
+                <FluentButton Appearance="Appearance.Accent"
+                              IconEnd="@(new Icons.Regular.Size16.ArrowRight())"
+                              Disabled="@(!CanAdvance())"
+                              OnClick="NextStep">
+                    Next
+                </FluentButton>
+            }
+            else
+            {
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size16.Checkmark())"
+                              Disabled="@(!CanFinish())"
+                              OnClick="FinishWizard">
+                    Finish
+                </FluentButton>
+            }
+        }
+    </FluentDialogFooter>
+</FluentDialog>
+
+@code {
+    [Parameter]
+    public string? ProjectId { get; set; }
+
+    private const int MaxAgents = 10;
+
+    // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
+    // endpoint (https://aps.autodesk.com/en/docs/acc/v1/reference/http/admin-projects-project-Id-users-POST/).
+    // "docs" (Data Management) is granted by default and has no selectable key, so it's rendered as a
+    // separate disabled/checked checkbox instead of an entry in this list.
+    private static readonly (string Key, string Label)[] FormaProducts = new[]
+    {
+        ("designCollaboration", "Design Collaboration"),
+        ("modelCoordination", "Model Coordination"),
+        ("autoSpecs", "AutoSpecs"),
+        ("build", "Build"),
+        ("cost", "Cost Management"),
+        ("insight", "Insight"),
+        ("projectAdministration", "Project Administration"),
+        ("takeoff", "Takeoff")
+    };
+
+    private bool _isLoading = true;
+    private bool _deletingAllSsas;
+    private string? _errorMessage;
+    private string? _infoMessage;
+    private string? _projectName;
+    private string? _deletingAgentId;
+
+    private List<AgentDefinition> _agents = new();
+    private List<ProjectRoleInfo> _allRoles = new();
+    private List<ProjectRoleInfo> _availableRoles = new();
+    private List<ToolDescriptor> _allTools = new();
+    private List<CompanyInfo> _companies = new();
+
+    private bool _hideWizard = true;
+    private int _wizardStep = 1;
+    private bool _wizardBusy;
+    private string? _wizardError;
+
+    private string _selectedRoleId = string.Empty;
+    private string _selectedRoleName = string.Empty;
+    private string _instructionsText = string.Empty;
+    private string _instructionsPlaceholder = "You are an assistant scoped to this project...";
+    private HashSet<string> _selectedToolIds = new();
+    private string _selectedCompanyId = string.Empty;
+    private HashSet<string> _selectedProductKeys = new();
+    private string _toolSearchText = string.Empty;
+    private HashSet<string> _expandedToolIds = new();
+
+    private IEnumerable<ToolDescriptor> FilteredTools =>
+        string.IsNullOrWhiteSpace(_toolSearchText)
+            ? _allTools
+            : _allTools.Where(t =>
+                t.DisplayName.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase)
+                || t.Description.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase));
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/agents-projects");
+            return;
+        }
+
+        if (string.IsNullOrEmpty(ProjectId))
+        {
+            _errorMessage = "Project ID is required.";
+            _isLoading = false;
+            return;
+        }
+
+        var accessToken = UserSession.AccessToken ?? string.Empty;
+        var userId = UserSession.UserId ?? string.Empty;
+
+        var isAdmin = await RoleService.IsProjectAdminAsync(ProjectId, userId, accessToken);
+        if (!isAdmin)
+        {
+            NavigationManager.NavigateTo("/agents-projects?error=unauthorized");
+            return;
+        }
+
+        await LoadAllData();
+    }
+
+    private async Task LoadAllData()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            StateHasChanged();
+
+            var accessToken = UserSession.AccessToken ?? string.Empty;
+
+            await LoadProjectName(accessToken);
+
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
+            _allRoles = (await RoleService.GetAllProjectRolesAsync(ProjectId!, accessToken)).ToList();
+            _allTools = ToolCatalogService.GetAllTools().ToList();
+            _companies = (await CompanyService.GetProjectCompaniesAsync(ProjectId!, accessToken)).ToList();
+
+            RefreshAvailableRoles();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading agents page: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task LoadProjectName(string accessToken)
+    {
+        try
+        {
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
+            if (hubs.Data == null) return;
+
+            foreach (var hub in hubs.Data)
+            {
+                var hubId = hub.Id ?? string.Empty;
+                if (string.IsNullOrEmpty(hubId)) continue;
+
+                try
+                {
+                    var projects = await DataManagementClient.GetHubProjectsAsync(
+                        accessToken: accessToken,
+                        hubId: hubId);
+                    var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
+                    if (project != null)
+                    {
+                        _projectName = project.Attributes?.Name ?? "Unknown Project";
+                        return;
+                    }
+                }
+                catch
+                {
+                    continue;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Failed to load project name: {ex.Message}");
+        }
+    }
+
+    private void RefreshAvailableRoles()
+    {
+        var usedRoleNames = _agents.Select(a => a.RoleName).ToHashSet(StringComparer.OrdinalIgnoreCase);
+        _availableRoles = _allRoles
+            .Where(r => !usedRoleNames.Contains(r.RoleName))
+            .OrderBy(r => r.RoleName)
+            .ToList();
+    }
+
+    private void OpenCreateWizard()
+    {
+        RefreshAvailableRoles();
+        _wizardStep = 1;
+        _wizardError = null;
+        _wizardBusy = false;
+        _selectedRoleId = string.Empty;
+        _selectedRoleName = string.Empty;
+        _instructionsText = string.Empty;
+        _instructionsPlaceholder = "You are an assistant scoped to this project...";
+        _selectedToolIds.Clear();
+        _selectedCompanyId = string.Empty;
+        _selectedProductKeys.Clear();
+        _toolSearchText = string.Empty;
+        _expandedToolIds.Clear();
+        _hideWizard = false;
+        StateHasChanged();
+    }
+
+    private void CancelWizard()
+    {
+        _hideWizard = true;
+        StateHasChanged();
+    }
+
+    private void OnRoleChanged(string roleId)
+    {
+        _selectedRoleId = roleId ?? string.Empty;
+        var role = _availableRoles.FirstOrDefault(r => r.RoleId == _selectedRoleId);
+        _selectedRoleName = role?.RoleName ?? string.Empty;
+        if (!string.IsNullOrEmpty(_selectedRoleName))
+        {
+            _instructionsPlaceholder = $"You are a {_selectedRoleName} assistant scoped to this project...";
+            if (string.IsNullOrWhiteSpace(_instructionsText))
+            {
+                _instructionsText = _instructionsPlaceholder;
+            }
+        }
+        StateHasChanged();
+    }
+
+    private void ToggleTool(string toolId, bool selected)
+    {
+        if (selected) _selectedToolIds.Add(toolId);
+        else _selectedToolIds.Remove(toolId);
+    }
+
+    private void ToggleProduct(string key, bool selected)
+    {
+        if (selected) _selectedProductKeys.Add(key);
+        else _selectedProductKeys.Remove(key);
+    }
+
+    private void ToggleDetails(string toolId)
+    {
+        if (!_expandedToolIds.Add(toolId))
+        {
+            _expandedToolIds.Remove(toolId);
+        }
+    }
+
+    private bool CanAdvance()
+    {
+        return _wizardStep switch
+        {
+            1 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
+            2 => _selectedProductKeys.Count > 0,
+            _ => true
+        };
+    }
+
+    private bool CanFinish()
+    {
+        return !string.IsNullOrEmpty(_selectedRoleId)
+               && !string.IsNullOrWhiteSpace(_instructionsText)
+               && _selectedToolIds.Count > 0
+               && _selectedProductKeys.Count > 0;
+    }
+
+    private void NextStep()
+    {
+        if (CanAdvance() && _wizardStep < 3)
+        {
+            _wizardStep++;
+            _wizardError = null;
+        }
+    }
+
+    private void PreviousStep()
+    {
+        if (_wizardStep > 1)
+        {
+            _wizardStep--;
+            _wizardError = null;
+        }
+    }
+
+    private async Task FinishWizard()
+    {
+        if (!CanFinish()) return;
+
+        _wizardBusy = true;
+        _wizardError = null;
+        StateHasChanged();
+
+        try
+        {
+            var agentName = $"{_selectedRoleName} Assistant";
+
+            var ssaId = await SsaService.CreateSsaAsync(agentName);
+            var keyId = await SsaService.StoreSsaKeyAsync(ssaId);
+            var ssaEmail = await SsaService.GetSsaEmailAsync(ssaId);
+
+            var selectedRole = _allRoles.FirstOrDefault(r =>
+                string.Equals(r.RoleName, _selectedRoleName, StringComparison.OrdinalIgnoreCase));
+            var roleId = selectedRole?.RoleId ?? _selectedRoleId;
+
+            var projectUserId = await SsaService.AddSsaToProjectAsync(
+                ProjectId!,
+                ssaEmail,
+                _selectedCompanyId,
+                new List<string> { roleId },
+                _selectedProductKeys.ToList(),
+                UserSession.AccessToken ?? string.Empty);
+
+            var agent = new AgentDefinition
+            {
+                AgentId = Guid.NewGuid().ToString(),
+                ProjectId = ProjectId!,
+                RoleName = _selectedRoleName,
+                AgentName = agentName,
+                InstructionsText = _instructionsText,
+                EnabledToolIds = _selectedToolIds.ToList(),
+                EnabledProductKeys = _selectedProductKeys.ToList(),
+                CompanyId = _selectedCompanyId,
+                SsaId = ssaId,
+                SsaKeyId = keyId,
+                SsaEmail = ssaEmail,
+                ProjectUserId = projectUserId,
+                CreatedAt = DateTime.UtcNow
+            };
+
+            await AgentRegistryService.CreateAgentAsync(agent);
+
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
+            RefreshAvailableRoles();
+
+            _hideWizard = true;
+            _infoMessage = $"Agent \"{agentName}\" created successfully.";
+        }
+        catch (Exception ex)
+        {
+            _wizardError = $"Failed to create agent: {ex.Message}";
+        }
+        finally
+        {
+            _wizardBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task DeleteAgent(AgentDefinition agent)
+    {
+        _deletingAgentId = agent.AgentId;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            if (!string.IsNullOrEmpty(agent.ProjectUserId))
+            {
+                await SsaService.RemoveSsaFromProjectAsync(
+                    agent.ProjectId,
+                    agent.ProjectUserId,
+                    UserSession.AccessToken ?? string.Empty);
+            }
+            if (!string.IsNullOrEmpty(agent.SsaId))
+            {
+                await SsaService.DeleteSsaAsync(agent.SsaId);
+            }
+            await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
+            RefreshAvailableRoles();
+            _infoMessage = $"Agent \"{agent.AgentName}\" deleted.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete agent: {ex.Message}";
+        }
+        finally
+        {
+            _deletingAgentId = null;
+            StateHasChanged();
+        }
+    }
+
+    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
+    private async Task DeleteAllSsaAccounts()
+    {
+        _deletingAllSsas = true;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var ssaIds = await SsaService.GetAllSsaIdsAsync();
+            var deleted = 0;
+            var failed = 0;
+
+            foreach (var ssaId in ssaIds)
+            {
+                try
+                {
+                    await SsaService.DeleteSsaAsync(ssaId);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
+                }
+            }
+
+            _infoMessage = failed == 0
+                ? $"Deleted {deleted} SSA account(s)."
+                : $"Deleted {deleted} SSA account(s), {failed} failed.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete all SSA accounts: {ex.Message}";
+        }
+        finally
+        {
+            _deletingAllSsas = false;
+            StateHasChanged();
+        }
+    }
+}

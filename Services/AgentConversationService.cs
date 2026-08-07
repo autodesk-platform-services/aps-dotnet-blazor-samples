@@ -22,7 +22,7 @@ public class AgentConversationService : IAgentConversationService
         LoadFromFile();
     }
 
-    public async Task<ConversationSession> CreateConversationAsync(string projectId, string userId)
+    public async Task<ConversationSession> CreateConversationAsync(string projectId, string userId, string agentId)
     {
         var now = DateTime.UtcNow;
         var session = new ConversationSession
@@ -30,6 +30,7 @@ public class AgentConversationService : IAgentConversationService
             ConversationId = Guid.NewGuid().ToString(),
             ProjectId = projectId,
             UserId = userId,
+            AgentId = agentId,
             CreatedAt = now,
             LastActivityAt = now,
             Messages = new List<ConversationMessage>()
@@ -38,16 +39,16 @@ public class AgentConversationService : IAgentConversationService
         _conversationsCache[session.ConversationId] = session;
         await SaveToFileAsync();
 
-        _logger.LogInformation("Created conversation {ConversationId} for project {ProjectId} user {UserId}",
-            session.ConversationId, projectId, userId);
+        _logger.LogInformation("Created conversation {ConversationId} for project {ProjectId} user {UserId} agent {AgentId}",
+            session.ConversationId, projectId, userId, agentId);
 
         return session;
     }
 
-    public Task<IReadOnlyList<ConversationSession>> GetConversationsAsync(string projectId, string userId)
+    public Task<IReadOnlyList<ConversationSession>> GetConversationsAsync(string projectId, string userId, string agentId)
     {
         IReadOnlyList<ConversationSession> result = _conversationsCache.Values
-            .Where(c => c.ProjectId == projectId && c.UserId == userId)
+            .Where(c => c.ProjectId == projectId && c.UserId == userId && c.AgentId == agentId)
             .OrderByDescending(c => c.LastActivityAt)
             .ToList();
 
