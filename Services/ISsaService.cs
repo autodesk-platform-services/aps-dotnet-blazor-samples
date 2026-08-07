@@ -3,6 +3,7 @@ namespace ApsSamples.Services;
 public interface ISsaService
 {
     Task<string> CreateSsaAsync(string name);
+    Task<List<string>> GetAllSsaIdsAsync();
     Task<string> StoreSsaKeyAsync(string ssaId);
     Task<string> GetSsaEmailAsync(string ssaId);
     Task<string> GetSsaTokenAsync(string ssaId, List<string> scopes);

@@ -63,6 +63,13 @@
             <span style="color: var(--neutral-foreground-hint); font-size: 13px;">
                 @_agents.Count / @MaxAgents agents configured
             </span>
+            <FluentButton Appearance="Appearance.Outline"
+                          IconStart="@(new Icons.Regular.Size20.Delete())"
+                          Disabled="@_deletingAllSsas"
+                          OnClick="DeleteAllSsaAccounts"
+                          Title="TEMPORARY: fetches every SSA account on this app and deletes them all">
+                @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
+            </FluentButton>
         </FluentStack>
 
         @if (_agents.Any())
@@ -275,6 +282,7 @@
     };
 
     private bool _isLoading = true;
+    private bool _deletingAllSsas;
     private string? _errorMessage;
     private string? _infoMessage;
     private string? _projectName;
@@ -597,6 +605,49 @@
         finally
         {
             _deletingAgentId = null;
+            StateHasChanged();
+        }
+    }
+
+    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
+    private async Task DeleteAllSsaAccounts()
+    {
+        _deletingAllSsas = true;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            var ssaIds = await SsaService.GetAllSsaIdsAsync();
+            var deleted = 0;
+            var failed = 0;
+
+            foreach (var ssaId in ssaIds)
+            {
+                try
+                {
+                    await SsaService.DeleteSsaAsync(ssaId);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    failed++;
+                    Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
+                }
+            }
+
+            _infoMessage = failed == 0
+                ? $"Deleted {deleted} SSA account(s)."
+                : $"Deleted {deleted} SSA account(s), {failed} failed.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Failed to delete all SSA accounts: {ex.Message}";
+        }
+        finally
+        {
+            _deletingAllSsas = false;
             StateHasChanged();
         }
     }

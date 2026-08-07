@@ -102,6 +102,19 @@ public class SsaService : ISsaService
         return slug;
     }
 
+    public async Task<List<string>> GetAllSsaIdsAsync()
+    {
+        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+
+        var response = await _accountApi.GetAllServiceAccountsAsync(accessToken: token);
+
+        return response.Content?.ServiceAccountsList?
+            .Select(a => a.ServiceAccountId)
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .ToList() ?? new List<string>();
+    }
+
     public async Task<string> StoreSsaKeyAsync(string ssaId)
     {
         var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
