@@ -257,17 +257,25 @@
 
     private const int MaxAgents = 10;
 
+    // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
+    // endpoint (https://aps.autodesk.com/en/docs/acc/v1/reference/http/admin-projects-project-Id-users-POST/).
+    // Legacy BIM 360-only products (Field Management, Schedule, Assets) have no Forma equivalent and
+    // are omitted; accountAdministration is account-scoped, not project-scoped, so it is omitted too.
     private static readonly (string Key, string Label)[] FormaProducts = new[]
     {
-        ("documentManagement", "Document Management"),
-        ("designCollaboration", "Design Collaboration"),
-        ("modelCoordination", "Model Coordination"),
-        ("costManagement", "Cost Management"),
-        ("fieldManagement", "Field Management"),
+        ("build", "Build"),
+        ("docs", "Docs"),
+        ("takeoff", "Takeoff"),
+        ("cost", "Cost Management"),
+        ("autoSpecs", "AutoSpecs"),
+        ("financials", "Financials"),
+        ("buildingConnected", "BuildingConnected"),
+        ("capitalPlanning", "Capital Planning"),
+        ("workshopxr", "Workshop XR"),
+        ("insight", "Insight"),
         ("projectAdministration", "Project Administration"),
-        ("schedule", "Schedule"),
-        ("assets", "Assets"),
-        ("insight", "Insight")
+        ("modelCoordination", "Model Coordination"),
+        ("designCollaboration", "Design Collaboration")
     };
 
     private bool _isLoading = true;
