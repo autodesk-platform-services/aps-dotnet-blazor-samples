@@ -3,6 +3,7 @@ using System.Net.Http.Headers;
 using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using Autodesk.Construction.AccountAdmin;
 using Autodesk.Construction.AccountAdmin.Model;
 using Autodesk.SecureServiceAccount.Http;
@@ -58,11 +59,12 @@ public class SsaService : ISsaService
     public async Task<string> CreateSsaAsync(string name)
     {
         var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        var sanitizedName = SanitizeSsaName(name);
         var payload = new CreateServiceAccountPayload
         {
-            Name = name,
-            FirstName = name,
-            LastName = name,
+            Name = sanitizedName,
+            FirstName = sanitizedName,
+            LastName = sanitizedName,
         };
 
         var response = await _accountApi.CreateServiceAccountAsync(
@@ -74,6 +76,30 @@ public class SsaService : ISsaService
 
         _logger.LogInformation("Created SSA {SsaId} ({Email})", serviceAccount.ServiceAccountId, serviceAccount.Email);
         return serviceAccount.ServiceAccountId!;
+    }
+
+    // The SSA API requires name/firstName/lastName to be 5-100 characters, containing only
+    // alphanumeric characters and dashes, with at least one alphanumeric character.
+    // See: https://aps.autodesk.com/en/docs/ssa/v1/developers_guide/best-practices/#naming-conventions
+    private static string SanitizeSsaName(string name)
+    {
+        var slug = Regex.Replace(name ?? string.Empty, "[^A-Za-z0-9]+", "-").Trim('-');
+        if (string.IsNullOrEmpty(slug))
+        {
+            slug = "agent";
+        }
+
+        while (slug.Length < 5)
+        {
+            slug += "-agent";
+        }
+
+        if (slug.Length > 100)
+        {
+            slug = slug[..100].TrimEnd('-');
+        }
+
+        return slug;
     }
 
     public async Task<string> StoreSsaKeyAsync(string ssaId)
