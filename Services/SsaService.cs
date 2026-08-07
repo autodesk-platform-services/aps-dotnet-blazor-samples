@@ -228,9 +228,10 @@ public class SsaService : ISsaService
         return accessToken;
     }
 
-    public async Task AddSsaToProjectAsync(string projectId, string ssaEmail, string? companyId, List<string> roleIds, List<string> productKeys)
+    public async Task AddSsaToProjectAsync(string projectId, string ssaEmail, string? companyId, List<string> roleIds, List<string> productKeys, string accessToken)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        // Assigning a project user must be done as the requesting user (3-legged), not the SSA's own
+        // app-level 2-legged token, since the SSA has no membership/permissions on the project yet.
 
         // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
         var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
@@ -254,7 +255,7 @@ public class SsaService : ISsaService
         await _adminClient.AssignProjectUserAsync(
             projectId: accountProjectId,
             projectUserPayload: payload,
-            accessToken: token);
+            accessToken: accessToken);
 
         _logger.LogInformation("Added SSA {Email} to project {ProjectId}", ssaEmail, accountProjectId);
     }

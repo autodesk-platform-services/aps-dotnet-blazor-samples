@@ -533,7 +533,8 @@
                 ssaEmail,
                 _selectedCompanyId,
                 new List<string> { roleId },
-                _selectedProductKeys.ToList());
+                _selectedProductKeys.ToList(),
+                UserSession.AccessToken ?? string.Empty);
 
             var agent = new AgentDefinition
             {
