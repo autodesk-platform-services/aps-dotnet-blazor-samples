@@ -13,5 +13,6 @@ public class AgentDefinition
     public string SsaId { get; set; } = string.Empty;
     public string SsaKeyId { get; set; } = string.Empty;
     public string SsaEmail { get; set; } = string.Empty;
+    public string ProjectUserId { get; set; } = string.Empty;
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
 }

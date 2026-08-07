@@ -536,7 +536,7 @@
                 string.Equals(r.RoleName, _selectedRoleName, StringComparison.OrdinalIgnoreCase));
             var roleId = selectedRole?.RoleId ?? _selectedRoleId;
 
-            await SsaService.AddSsaToProjectAsync(
+            var projectUserId = await SsaService.AddSsaToProjectAsync(
                 ProjectId!,
                 ssaEmail,
                 _selectedCompanyId,
@@ -557,6 +557,7 @@
                 SsaId = ssaId,
                 SsaKeyId = keyId,
                 SsaEmail = ssaEmail,
+                ProjectUserId = projectUserId,
                 CreatedAt = DateTime.UtcNow
             };
 
@@ -588,6 +589,13 @@
 
         try
         {
+            if (!string.IsNullOrEmpty(agent.ProjectUserId))
+            {
+                await SsaService.RemoveSsaFromProjectAsync(
+                    agent.ProjectId,
+                    agent.ProjectUserId,
+                    UserSession.AccessToken ?? string.Empty);
+            }
             if (!string.IsNullOrEmpty(agent.SsaId))
             {
                 await SsaService.DeleteSsaAsync(agent.SsaId);

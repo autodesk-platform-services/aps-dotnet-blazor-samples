@@ -241,7 +241,7 @@ public class SsaService : ISsaService
         return accessToken;
     }
 
-    public async Task AddSsaToProjectAsync(string projectId, string ssaEmail, string? companyId, List<string> roleIds, List<string> productKeys, string accessToken)
+    public async Task<string> AddSsaToProjectAsync(string projectId, string ssaEmail, string? companyId, List<string> roleIds, List<string> productKeys, string accessToken)
     {
         // Assigning a project user must be done as the requesting user (3-legged), not the SSA's own
         // app-level 2-legged token, since the SSA has no membership/permissions on the project yet.
@@ -269,12 +269,35 @@ public class SsaService : ISsaService
                 .ToList(),
         };
 
-        await _adminClient.AssignProjectUserAsync(
+        var projectUser = await _adminClient.AssignProjectUserAsync(
             projectId: accountProjectId,
             projectUserPayload: payload,
             accessToken: accessToken);
 
         _logger.LogInformation("Added SSA {Email} to project {ProjectId}", ssaEmail, accountProjectId);
+        return projectUser?.Id ?? string.Empty;
+    }
+
+    public async Task RemoveSsaFromProjectAsync(string projectId, string projectUserId, string accessToken)
+    {
+        if (string.IsNullOrWhiteSpace(projectUserId))
+        {
+            _logger.LogWarning("No project user ID for SSA removal from project {ProjectId}; skipping.", projectId);
+            return;
+        }
+
+        // Removing a project user must be done as the requesting user (3-legged), matching how the
+        // SSA was assigned to the project.
+        var accountProjectId = projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+            ? projectId[2..]
+            : projectId;
+
+        await _adminClient.RemoveProjectUserAsync(
+            projectId: accountProjectId,
+            userId: projectUserId,
+            accessToken: accessToken);
+
+        _logger.LogInformation("Removed project user {ProjectUserId} from project {ProjectId}", projectUserId, accountProjectId);
     }
 
     public async Task DeleteSsaAsync(string ssaId)
