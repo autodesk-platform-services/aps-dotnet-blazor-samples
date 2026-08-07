@@ -173,6 +173,10 @@
                         Grant the agent access to the following Forma products in this project.
                     </p>
                     <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
+                        <FluentCheckbox Label="Data Management"
+                                        Value="true"
+                                        Disabled="true"
+                                        title="Granted by default; not part of the product selection sent to APS." />
                         @foreach (var product in FormaProducts)
                         {
                             <FluentCheckbox Label="@product.Label"
@@ -266,19 +270,18 @@
 
     // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
     // endpoint (https://aps.autodesk.com/en/docs/acc/v1/reference/http/admin-projects-project-Id-users-POST/).
-    // Restricted to the Forma-available values per docs: autoSpecs, build, cost, designCollaboration,
-    // docs, insight, modelCoordination, projectAdministration, takeoff.
+    // "docs" (Data Management) is granted by default and has no selectable key, so it's rendered as a
+    // separate disabled/checked checkbox instead of an entry in this list.
     private static readonly (string Key, string Label)[] FormaProducts = new[]
     {
-        ("build", "Build"),
-        ("docs", "Docs"),
-        ("takeoff", "Takeoff"),
-        ("cost", "Cost Management"),
+        ("designCollaboration", "Design Collaboration"),
+        ("modelCoordination", "Model Coordination"),
         ("autoSpecs", "AutoSpecs"),
+        ("build", "Build"),
+        ("cost", "Cost Management"),
         ("insight", "Insight"),
         ("projectAdministration", "Project Administration"),
-        ("modelCoordination", "Model Coordination"),
-        ("designCollaboration", "Design Collaboration")
+        ("takeoff", "Takeoff")
     };
 
     private bool _isLoading = true;
