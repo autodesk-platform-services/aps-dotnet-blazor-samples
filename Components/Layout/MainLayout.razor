@@ -1,6 +1,7 @@
 ﻿@inherits LayoutComponentBase
 @using ApsSamples.Services
 @inject IUserSessionService UserSession
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
 
 <FluentLayout>
@@ -8,6 +9,17 @@
             <div>
                 Autodesk Platform Services .NET Blazor Samples
             </div>
+            @if (_selectedProject != null)
+            {
+                <FluentSpacer Width="20"></FluentSpacer>
+                <span style="font-size: 14px;">Project: @_selectedProject.ProjectName</span>
+                <FluentSpacer Width="10"></FluentSpacer>
+                <FluentButton Appearance="Appearance.Lightweight"
+                              IconStart="@(new Icons.Regular.Size20.ArrowSwap())"
+                              OnClick="ChangeProject">
+                    Change Project
+                </FluentButton>
+            }
             <FluentSpacer></FluentSpacer>
             @if (!string.IsNullOrEmpty(UserSession.UserEmail))
             {
@@ -50,6 +62,16 @@
 </div>
 
 @code {
+    private SelectedProjectRecord? _selectedProject;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (UserSession.IsAuthenticated)
+        {
+            _selectedProject = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        }
+    }
+
     private void Login()
     {
         NavigationManager.NavigateTo("/api/auth/login?returnUrl=/", forceLoad: true);
@@ -59,6 +81,11 @@
     {
         UserSession.ClearSession();
         NavigationManager.NavigateTo("/", forceLoad: true);
+    }
+
+    private void ChangeProject()
+    {
+        NavigationManager.NavigateTo("/projects");
     }
 }
 
