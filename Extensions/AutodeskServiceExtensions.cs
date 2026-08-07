@@ -46,6 +46,7 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<IAgentConversationService, AgentConversationService>();
         services.AddSingleton<IAgentRegistryService, AgentRegistryService>();
         services.AddSingleton<IToolCatalogService, ToolCatalogService>();
+        services.AddSingleton<ISelectedProjectService, SelectedProjectService>();
         // SsaService depends on scoped IAPSAuthenticationService + AdminClient, so it must be scoped too.
         services.AddScoped<ISsaService, SsaService>();
 
