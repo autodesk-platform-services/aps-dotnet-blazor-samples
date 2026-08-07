@@ -247,7 +247,11 @@ public class SsaService : ISsaService
                 .Select(k => new ProjectUserPayloadProducts
                 {
                     Key = Enum.Parse<ProductKeys>(k, ignoreCase: true),
-                    Access = ProductAccess.Member,
+                    // Project Administration grants admin access to that module; every other
+                    // selected product grants standard member access.
+                    Access = string.Equals(k, "projectAdministration", StringComparison.OrdinalIgnoreCase)
+                        ? ProductAccess.Administrator
+                        : ProductAccess.Member,
                 })
                 .ToList(),
         };
