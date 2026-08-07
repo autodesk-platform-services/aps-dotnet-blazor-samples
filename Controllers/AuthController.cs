@@ -22,7 +22,8 @@ public class AuthController(
             Scopes.DataCreate,
             Scopes.CodeAll,
             Scopes.ViewablesRead,
-            Scopes.AccountRead
+            Scopes.AccountRead,
+            Scopes.AccountWrite
         };
 
         // Store return URL in session or state parameter
