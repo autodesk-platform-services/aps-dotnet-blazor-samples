@@ -1,10 +1,11 @@
-@page "/{ProjectId}/view-models"
+@page "/view-models"
 @using ApsSamples.Services
 @using Autodesk.DataManagement
 @using Autodesk.DataManagement.Model
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
 @inject DataManagementClient DataManagementClient
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -14,12 +15,6 @@
 
 <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" VerticalAlignment="VerticalAlignment.Top">
     <FluentStack Orientation="Orientation.Vertical" VerticalGap="20" Style="width: 420px; flex: 0 0 420px;">
-        <FluentButton Appearance="Appearance.Lightweight"
-                      IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                      OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
-            Back to Projects
-        </FluentButton>
-
         <div>
             <h1>View Models</h1>
             @if (!string.IsNullOrEmpty(_projectName))
@@ -87,9 +82,7 @@
 </FluentStack>
 
 @code {
-    [Parameter]
-    public string? ProjectId { get; set; }
-
+    private string? _projectId;
     private string? _projectName;
     private string? _hubId;
     private string? _errorMessage;
@@ -113,17 +106,21 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/view-models-projects");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
+            NavigationManager.NavigateTo("/projects");
             return;
         }
 
-        await LoadProjectDetails();
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+        _hubId = selected.HubId;
+
         await LoadAvailableModels();
     }
 
@@ -153,48 +150,6 @@
         await _jsModule.InvokeVoidAsync("loadModel", model.DerivativeUrn);
     }
 
-    private async Task LoadProjectDetails()
-    {
-        try
-        {
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
-
-            if (hubs.Data != null)
-            {
-                foreach (var hub in hubs.Data)
-                {
-                    var hubId = hub.Id ?? string.Empty;
-
-                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    try
-                    {
-                        var projects = await DataManagementClient.GetHubProjectsAsync(
-                            accessToken: UserSession.AccessToken,
-                            hubId: hubId);
-
-                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                        if (project != null)
-                        {
-                            _projectName = project.Attributes?.Name ?? "Unknown Project";
-                            _hubId = hubId;
-                            return;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Error loading project details: {ex.Message}";
-        }
-    }
-
     private async Task LoadAvailableModels()
     {
         try
@@ -206,7 +161,7 @@
             var folders = await DataManagementClient.GetProjectTopFoldersAsync(
                 accessToken: UserSession.AccessToken,
                 hubId: _hubId!,
-                projectId: ProjectId!);
+                projectId: _projectId!);
 
             if (folders.Data != null)
             {
@@ -235,7 +190,7 @@
         {
             var contents = await DataManagementClient.GetFolderContentsAsync(
                 accessToken: UserSession.AccessToken,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 folderId: folderId);
 
             if (contents.Data != null)

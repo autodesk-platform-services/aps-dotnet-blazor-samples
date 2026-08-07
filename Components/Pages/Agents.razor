@@ -1,8 +1,6 @@
-@page "/agents/{ProjectId}"
+@page "/agents"
 @using ApsSamples.Models
 @using ApsSamples.Services
-@using Autodesk.DataManagement
-@using Autodesk.DataManagement.Model
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
 @inject IProjectRoleService RoleService
@@ -10,19 +8,13 @@
 @inject ISsaService SsaService
 @inject IToolCatalogService ToolCatalogService
 @inject ICompanyService CompanyService
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
-@inject DataManagementClient DataManagementClient
 @rendermode InteractiveServer
 
 <PageTitle>Agents - @(_projectName ?? "Project")</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="@(() => NavigationManager.NavigateTo("/agents-projects"))">
-        Back to Projects
-    </FluentButton>
-
     <div>
         <h1>Agents</h1>
         @if (!string.IsNullOrEmpty(_projectName))
@@ -33,7 +25,13 @@
         }
     </div>
 
-    @if (_isLoading)
+    @if (_accessDenied)
+    {
+        <FluentMessageBar Intent="MessageIntent.Warning">
+            Access denied. You do not have the Project Admin role for this project.
+        </FluentMessageBar>
+    }
+    else if (_isLoading)
     {
         <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
             <FluentProgressRing />
@@ -263,9 +261,6 @@
 </FluentDialog>
 
 @code {
-    [Parameter]
-    public string? ProjectId { get; set; }
-
     private const int MaxAgents = 10;
 
     // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
@@ -286,9 +281,11 @@
 
     private bool _isLoading = true;
     private bool _deletingAllSsas;
+    private bool _accessDenied;
     private string? _errorMessage;
     private string? _infoMessage;
     private string? _projectName;
+    private string? _projectId;
     private string? _deletingAgentId;
 
     private List<AgentDefinition> _agents = new();
@@ -323,24 +320,28 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/agents-projects");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
-            _isLoading = false;
+            NavigationManager.NavigateTo("/projects");
             return;
         }
+
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
 
         var accessToken = UserSession.AccessToken ?? string.Empty;
         var userId = UserSession.UserId ?? string.Empty;
 
-        var isAdmin = await RoleService.IsProjectAdminAsync(ProjectId, userId, accessToken);
+        var isAdmin = await RoleService.IsProjectAdminAsync(_projectId, userId, accessToken);
         if (!isAdmin)
         {
-            NavigationManager.NavigateTo("/agents-projects?error=unauthorized");
+            _accessDenied = true;
+            _isLoading = false;
             return;
         }
 
@@ -357,12 +358,10 @@
 
             var accessToken = UserSession.AccessToken ?? string.Empty;
 
-            await LoadProjectName(accessToken);
-
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
-            _allRoles = (await RoleService.GetAllProjectRolesAsync(ProjectId!, accessToken)).ToList();
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
+            _allRoles = (await RoleService.GetAllProjectRolesAsync(_projectId!, accessToken)).ToList();
             _allTools = ToolCatalogService.GetAllTools().ToList();
-            _companies = (await CompanyService.GetProjectCompaniesAsync(ProjectId!, accessToken)).ToList();
+            _companies = (await CompanyService.GetProjectCompaniesAsync(_projectId!, accessToken)).ToList();
 
             RefreshAvailableRoles();
         }
@@ -374,42 +373,6 @@
         {
             _isLoading = false;
             StateHasChanged();
-        }
-    }
-
-    private async Task LoadProjectName(string accessToken)
-    {
-        try
-        {
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
-            if (hubs.Data == null) return;
-
-            foreach (var hub in hubs.Data)
-            {
-                var hubId = hub.Id ?? string.Empty;
-                if (string.IsNullOrEmpty(hubId)) continue;
-
-                try
-                {
-                    var projects = await DataManagementClient.GetHubProjectsAsync(
-                        accessToken: accessToken,
-                        hubId: hubId);
-                    var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                    if (project != null)
-                    {
-                        _projectName = project.Attributes?.Name ?? "Unknown Project";
-                        return;
-                    }
-                }
-                catch
-                {
-                    continue;
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Failed to load project name: {ex.Message}");
         }
     }
 
@@ -540,7 +503,7 @@
             var roleId = selectedRole?.RoleId ?? _selectedRoleId;
 
             var projectUserId = await SsaService.AddSsaToProjectAsync(
-                ProjectId!,
+                _projectId!,
                 ssaEmail,
                 _selectedCompanyId,
                 new List<string> { roleId },
@@ -550,7 +513,7 @@
             var agent = new AgentDefinition
             {
                 AgentId = Guid.NewGuid().ToString(),
-                ProjectId = ProjectId!,
+                ProjectId = _projectId!,
                 RoleName = _selectedRoleName,
                 AgentName = agentName,
                 InstructionsText = _instructionsText,
@@ -566,7 +529,7 @@
 
             await AgentRegistryService.CreateAgentAsync(agent);
 
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
             RefreshAvailableRoles();
 
             _hideWizard = true;
@@ -605,7 +568,7 @@
             }
             await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
 
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(ProjectId!)).ToList();
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
             RefreshAvailableRoles();
             _infoMessage = $"Agent \"{agent.AgentName}\" deleted.";
         }

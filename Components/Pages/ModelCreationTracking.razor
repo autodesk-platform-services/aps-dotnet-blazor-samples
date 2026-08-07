@@ -14,9 +14,6 @@
 <PageTitle>Model Creation Tracking</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight" IconStart="@(new Icons.Regular.Size20.ArrowLeft())" OnClick="NavigateBackToModelCreation">
-        Back to Model Creation
-    </FluentButton>
     <div>
         <h1>Cloud Models Creation Tracking</h1>
             <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
@@ -403,19 +400,6 @@
         NavigationManager.NavigateTo(reportUrl, true);
     }
 
-    private void NavigateBackToModelCreation()
-    {
-        if (!string.IsNullOrEmpty(ProjectId))
-        {
-            NavigationManager.NavigateTo($"/{ProjectId}/create-models");
-        }
-        else
-        {
-            // Fallback to projects if no ProjectId is available (shouldn't happen with new routing)
-            Logger.LogWarning("ProjectId is missing, navigating to projects page");
-            NavigationManager.NavigateTo("/create-models-projects");
-        }
-    }
 
     private void ShowDetails(WorkItemInfo workItem)
     {
