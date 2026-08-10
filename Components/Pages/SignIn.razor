@@ -1,0 +1,38 @@
+@page "/signin"
+@layout SignInLayout
+@rendermode InteractiveServer
+@using ApsSamples.Services
+@inject IUserSessionService UserSession
+@inject NavigationManager NavigationManager
+
+<PageTitle>Sign In</PageTitle>
+
+<FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="margin-top: 60px;">
+    <FluentCard Style="max-width: 450px; width: 100%; padding: 30px;">
+        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="20">
+            <FluentIcon Value="@(new Icons.Regular.Size48.LockClosed())" Color="Color.Neutral" Style="align-self: center;" />
+            <h3 style="text-align: center; margin: 0;">Authentication Required</h3>
+            <p style="text-align: center; margin: 0; color: var(--neutral-foreground-hint);">
+                Please sign in with your Autodesk account to access your hubs and projects.
+            </p>
+            <FluentButton IconStart="@(new Icons.Regular.Size20.Person())" OnClick="Login" Appearance="Appearance.Accent">
+                Sign In with Autodesk
+            </FluentButton>
+        </FluentStack>
+    </FluentCard>
+</FluentStack>
+
+@code {
+    protected override void OnInitialized()
+    {
+        if (UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/", forceLoad: false);
+        }
+    }
+
+    private void Login()
+    {
+        NavigationManager.NavigateTo("/api/auth/login?returnUrl=/", forceLoad: true);
+    }
+}

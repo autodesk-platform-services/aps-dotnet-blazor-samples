@@ -1,7 +1,6 @@
-@page "/{ProjectId}/chat"
+@page "/chat"
 @using ApsSamples.Models
 @using ApsSamples.Services
-@using Autodesk.Construction.AccountAdmin
 @using Markdig
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
@@ -10,7 +9,7 @@
 @inject IAgentConversationService ConversationService
 @inject IAgentTaskService TaskService
 @inject IAgentRegistryService AgentRegistryService
-@inject AdminClient AdminClient
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
 @inject IJSRuntime JS
 @implements IAsyncDisposable
@@ -130,9 +129,9 @@
 
     .chat-columns {
         align-items: flex-start;
-        /* Kept well under 100vh (header + the extra "Back to Projects/project name" row above
-           this, plus the app footer below it, already take up real space) so the footer stays
-           on screen instead of being pushed below the fold. */
+        /* Kept well under 100vh (header + the extra project-name row above this, plus the
+           app footer below it, already take up real space) so the footer stays on screen
+           instead of being pushed below the fold. */
         height: 85vh;
     }
 
@@ -319,11 +318,6 @@
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
     <div style="display: flex; align-items: center; gap: 16px;">
-        <FluentButton Appearance="Appearance.Lightweight"
-                      IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                      OnClick="@(() => NavigationManager.NavigateTo("/chat-projects"))">
-            Back to Projects
-        </FluentButton>
         @if (!string.IsNullOrEmpty(_projectName))
         {
             <span style="color: var(--neutral-foreground-hint); font-weight: 600;">@_projectName</span>
@@ -334,10 +328,10 @@
         }
     </div>
 
-    @if (!string.IsNullOrEmpty(_errorMessage))
+    @if (_accessDenied)
     {
-        <FluentMessageBar Intent="MessageIntent.Error">
-            @_errorMessage
+        <FluentMessageBar Intent="MessageIntent.Warning">
+            Access denied. You do not have the BIM Manager role for this project.
         </FluentMessageBar>
     }
     else if (_noAgentsAccessible)
@@ -588,11 +582,9 @@
     private static MarkupString RenderMarkdown(string content) =>
         (MarkupString)Markdown.ToHtml(content, MarkdownPipeline);
 
-    [Parameter]
-    public string? ProjectId { get; set; }
-
+    private string? _projectId;
     private string? _projectName;
-    private string? _errorMessage;
+    private bool _accessDenied;
     private string? _userId;
     private List<AgentDefinition> _accessibleAgents = new();
     private AgentDefinition? _selectedAgent;
@@ -636,29 +628,40 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/chat-projects");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
+            NavigationManager.NavigateTo("/projects");
+            return;
+        }
+
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+
+        var accessToken = UserSession.AccessToken ?? string.Empty;
+        var accountAdminUserId = UserSession.UserId ?? string.Empty;
+
+        var isBimManager = await RoleService.IsBimManagerAsync(_projectId, accountAdminUserId, accessToken);
+        if (!isBimManager)
+        {
+            _accessDenied = true;
             return;
         }
 
         // Give the agent's tools the project this page is scoped to, so the LLM never has to
         // supply (or guess) a project ID itself.
-        ChatService.SetProjectContext(ProjectId);
+        ChatService.SetProjectContext(_projectId);
+        ChatService.SetHubContext(selected.HubId);
 
-        var accessToken = UserSession.AccessToken ?? string.Empty;
-        var accountAdminUserId = UserSession.UserId ?? string.Empty;
-        var userRoles = await RoleService.GetProjectRolesAsync(ProjectId, accountAdminUserId, accessToken);
-
-        await LoadProjectNameAsync();
+        var userRoles = await RoleService.GetProjectRolesAsync(_projectId, accountAdminUserId, accessToken);
 
         _userId = UserSession.UserEmail ?? UserSession.UserName ?? "unknown";
 
-        var allAgents = await AgentRegistryService.GetAgentsByProjectAsync(ProjectId);
+        var allAgents = await AgentRegistryService.GetAgentsByProjectAsync(_projectId);
         _accessibleAgents = allAgents
             .Where(a => userRoles.Any(r => string.Equals(r, a.RoleName, StringComparison.OrdinalIgnoreCase)))
             .ToList();
@@ -681,7 +684,7 @@
         var existing = new List<ConversationSession>();
         foreach (var agent in _accessibleAgents)
         {
-            existing.AddRange(await ConversationService.GetConversationsAsync(ProjectId, _userId, agent.AgentId));
+            existing.AddRange(await ConversationService.GetConversationsAsync(_projectId, _userId, agent.AgentId));
         }
 
         var mostRecent = existing.OrderByDescending(c => c.LastActivityAt).FirstOrDefault();
@@ -700,14 +703,14 @@
 
     private async Task StartConversationForSelectedAgentAsync()
     {
-        if (ProjectId == null || _userId == null || _selectedAgent == null) return;
+        if (_projectId == null || _userId == null || _selectedAgent == null) return;
 
         await ChatService.SetAgentContextAsync(_selectedAgent.AgentId);
 
-        _conversations = (await ConversationService.GetConversationsAsync(ProjectId, _userId, _selectedAgent.AgentId)).ToList();
+        _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId, _selectedAgent.AgentId)).ToList();
         if (_conversations.Count == 0)
         {
-            _conversations.Add(await ConversationService.CreateConversationAsync(ProjectId, _userId, _selectedAgent.AgentId));
+            _conversations.Add(await ConversationService.CreateConversationAsync(_projectId, _userId, _selectedAgent.AgentId));
         }
 
         _conversation = _conversations[0];
@@ -715,14 +718,14 @@
         _taskFilterConversationId = _conversation.ConversationId;
         _agentLocked = true;
 
-        _agentTasks = await TaskService.GetTasksByProjectAsync(ProjectId);
+        _agentTasks = await TaskService.GetTasksByProjectAsync(_projectId);
 
         _pollingTimer ??= new System.Threading.Timer(async _ =>
         {
-            if (_disposed || ProjectId == null) return;
+            if (_disposed || _projectId == null) return;
             try
             {
-                _agentTasks = await TaskService.GetTasksByProjectAsync(ProjectId);
+                _agentTasks = await TaskService.GetTasksByProjectAsync(_projectId);
                 _conversations = _conversations.OrderByDescending(c => c.LastActivityAt).ToList();
                 await InvokeAsync(StateHasChanged);
             }
@@ -758,33 +761,6 @@
             {
                 await ScrollToBottomAsync();
             }
-        }
-    }
-
-    private async Task LoadProjectNameAsync()
-    {
-        try
-        {
-            var accessToken = UserSession.AccessToken ?? string.Empty;
-
-            // Account Admin project IDs drop the "b." hub prefix used by the Data Management API.
-            var accountProjectId = ProjectId!.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
-                ? ProjectId[2..]
-                : ProjectId;
-
-            var project = await AdminClient.GetProjectAsync(projectId: accountProjectId, accessToken: accessToken);
-            _projectName = project?.Name ?? "Unknown Project";
-
-            // Give the agent's tools the hub this project belongs to, so they never have to
-            // resolve it themselves via an extra API call.
-            if (!string.IsNullOrEmpty(project?.AccountId))
-            {
-                ChatService.SetHubContext("b." + project.AccountId);
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading project name: {ex.Message}");
         }
     }
 
@@ -853,9 +829,9 @@
 
     private async Task StartNewConversationAsync()
     {
-        if (ProjectId == null || _userId == null || _selectedAgent == null) return;
+        if (_projectId == null || _userId == null || _selectedAgent == null) return;
 
-        var created = await ConversationService.CreateConversationAsync(ProjectId, _userId, _selectedAgent.AgentId);
+        var created = await ConversationService.CreateConversationAsync(_projectId, _userId, _selectedAgent.AgentId);
         _conversations.Insert(0, created);
         await SelectConversationAsync(created);
     }
