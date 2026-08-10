@@ -1,8 +1,7 @@
 .signin-shell {
     display: flex;
     flex-direction: column;
-    height: 100dvh;
-    overflow: hidden;
+    min-height: 100dvh;
 }
 
 .signin-appbar {
@@ -37,5 +36,5 @@
 
 .signin-body {
     flex: 1;
-    overflow: hidden;
+    overflow-y: auto;
 }
