@@ -35,6 +35,31 @@
 }
 
 .signin-body {
+    display: flex;
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
+}
+
+.signin-footer {
+    height: 40px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--neutral-layer-2);
+    border-top: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-hint);
+    font-size: 12px;
+}
+
+.signin-footer-link {
+    color: var(--neutral-foreground-hint);
+    text-decoration: none;
+    font-size: 12px;
+}
+
+.signin-footer-link:hover {
+    text-decoration: underline;
 }
