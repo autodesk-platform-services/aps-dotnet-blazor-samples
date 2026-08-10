@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 200" fill="none" aria-hidden="true">
+  <!-- Isometric cube: three visible faces -->
+  <!-- Top face -->
+  <path d="M120 24 L212 72 L120 120 L28 72 Z" fill="#ffffff" fill-opacity="0.95" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Left face -->
+  <path d="M28 72 L120 120 L120 192 L28 144 Z" fill="#1858E8" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Right face -->
+  <path d="M212 72 L120 120 L120 192 L212 144 Z" fill="#0d2b6b" stroke="#ffffff" stroke-width="1.5" stroke-linejoin="round"/>
+  <!-- Accent inner lines -->
+  <path d="M120 24 L120 120" stroke="#ffffff" stroke-width="1" stroke-opacity="0.5"/>
+  <!-- Floating small cube accent -->
+  <path d="M186 32 L210 44 L186 56 L162 44 Z" fill="#ffffff" fill-opacity="0.35"/>
+  <path d="M162 44 L186 56 L186 76 L162 64 Z" fill="#ffffff" fill-opacity="0.18"/>
+  <path d="M210 44 L186 56 L186 76 L210 64 Z" fill="#ffffff" fill-opacity="0.10"/>
+</svg>
