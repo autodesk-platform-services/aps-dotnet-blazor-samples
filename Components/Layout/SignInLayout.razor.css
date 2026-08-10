@@ -21,16 +21,16 @@
     letter-spacing: 0.01em;
 }
 
-.signin-help-link {
+.signin-appbar ::deep .signin-help-link {
     color: white;
     text-decoration: none;
-    display: flex;
+    display: inline-flex;
     align-items: center;
     gap: 6px;
     font-size: 14px;
 }
 
-.signin-help-link:hover {
+.signin-appbar ::deep .signin-help-link:hover {
     text-decoration: underline;
 }
 
@@ -54,12 +54,12 @@
     font-size: 12px;
 }
 
-.signin-footer-link {
+.signin-footer ::deep .signin-footer-link {
     color: var(--neutral-foreground-hint);
     text-decoration: none;
     font-size: 12px;
 }
 
-.signin-footer-link:hover {
+.signin-footer ::deep .signin-footer-link:hover {
     text-decoration: underline;
 }

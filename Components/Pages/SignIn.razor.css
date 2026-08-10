@@ -1,6 +1,6 @@
 .signin-columns {
     display: grid;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: 2fr 3fr;
     grid-template-rows: 1fr;
     flex: 1;
     min-width: 0;
@@ -28,13 +28,13 @@
 }
 
 .signin-product-title {
-    font-size: 15px;
+    font-size: 20px;
     font-weight: 500;
     line-height: 1.4;
 }
 
-.signin-tagline {
-    font-size: 14px;
+.signin-marketing ::deep .signin-tagline {
+    font-size: 18px;
     opacity: 0.85;
     margin: 0;
 }
@@ -62,24 +62,12 @@
 }
 
 .signin-feature-text strong {
-    font-size: 14px;
+    font-size: 17px;
 }
 
 .signin-feature-text span {
-    font-size: 12px;
+    font-size: 15px;
     opacity: 0.75;
-}
-
-.signin-hero {
-    margin-top: auto;
-    display: flex;
-    justify-content: center;
-    align-items: flex-end;
-}
-
-.signin-hero-img {
-    max-height: 160px;
-    max-width: 100%;
 }
 
 .signin-welcome {
@@ -90,7 +78,7 @@
     padding: 24px;
 }
 
-.signin-card {
+.signin-welcome ::deep .signin-card {
     background: white;
     border-radius: 12px;
     box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
@@ -103,21 +91,21 @@
     align-items: stretch;
 }
 
-.signin-welcome-heading {
+.signin-welcome ::deep .signin-welcome-heading {
     margin: 0;
     text-align: center;
     font-size: 24px;
     font-weight: 600;
 }
 
-.signin-welcome-sub {
+.signin-welcome ::deep .signin-welcome-sub {
     margin: 0;
     text-align: center;
     color: var(--neutral-foreground-hint);
     font-size: 14px;
 }
 
-.signin-btn-primary {
+.signin-welcome ::deep .signin-btn-primary {
     width: 100%;
 }
 
@@ -139,19 +127,12 @@
     white-space: nowrap;
 }
 
-.signin-btn-secondary {
+.signin-welcome ::deep .signin-btn-secondary {
     display: block;
+    width: 100%;
     text-align: center;
-    padding: 8px 16px;
-    border: 1px solid var(--neutral-stroke-rest);
-    border-radius: 4px;
-    color: var(--neutral-foreground-rest);
     text-decoration: none;
     font-size: 14px;
-}
-
-.signin-btn-secondary:hover {
-    background: var(--neutral-layer-4);
 }
 
 @media (max-width: 960px) {
@@ -164,11 +145,7 @@
         min-height: 280px;
     }
 
-    .signin-hero {
-        display: none;
-    }
-
-    .signin-card {
+    .signin-welcome ::deep .signin-card {
         padding: 32px 24px;
     }
 }

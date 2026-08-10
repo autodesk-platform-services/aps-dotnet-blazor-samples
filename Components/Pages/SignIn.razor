@@ -16,7 +16,7 @@
                 .NET Blazor Samples
             </div>
         </div>
-        <FluentLabel Typo="Typography.Body" Class="signin-tagline">Build powerful integrations with the Autodesk Platform</FluentLabel>
+        <FluentLabel Typo="Typography.Body" Color="Color.Custom" CustomColor="#ffffff" Class="signin-tagline">Build powerful integrations with the Autodesk Platform</FluentLabel>
         <ul class="signin-features">
             <li class="signin-feature-item">
                 <FluentIcon Value="@(new Icons.Regular.Size24.Cloud())" Color="Color.Custom" CustomColor="#ffffff" Style="flex-shrink: 0;" />
@@ -47,9 +47,6 @@
                 </div>
             </li>
         </ul>
-        <div class="signin-hero">
-            <img src="/img/aps-cube-hero.svg" alt="" aria-hidden="true" class="signin-hero-img" width="240" height="200" />
-        </div>
     </div>
     <div class="signin-welcome">
         <FluentCard MinimalStyle="true" Height="auto" Class="signin-card">
@@ -65,7 +62,7 @@
                 <span class="signin-divider-text">or</span>
                 <FluentDivider Style="flex: 1;" />
             </div>
-            <FluentAnchor Href="https://signin.autodesk.com/?flowId=9FJKUleRRX" Target="_blank" Rel="noopener noreferrer" Class="signin-btn-secondary">Create an Autodesk account</FluentAnchor>
+            <FluentAnchor Appearance="Appearance.Outline" Href="https://signin.autodesk.com/?flowId=9FJKUleRRX" Target="_blank" Rel="noopener noreferrer" Class="signin-btn-secondary">Create an Autodesk account</FluentAnchor>
         </FluentCard>
     </div>
 </div>
