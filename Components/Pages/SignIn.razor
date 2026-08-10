@@ -51,10 +51,9 @@
     <div class="signin-welcome">
         <FluentCard MinimalStyle="true" Height="auto" Class="signin-card">
             <FluentIcon Value="@(new Icons.Filled.Size32.PersonCircle())" Color="Color.Accent" Style="align-self: center; width: 48px; height: 48px;" />
-            <FluentLabel Typo="Typography.PageTitle" Class="signin-welcome-heading">Welcome Back</FluentLabel>
+            <FluentLabel Typo="Typography.PageTitle" Class="signin-welcome-heading" Weight="FontWeight.Bold">Welcome Back</FluentLabel>
             <FluentLabel Typo="Typography.Body" Class="signin-welcome-sub">Sign in to your Autodesk account to continue to APS .NET Blazor Samples.</FluentLabel>
             <FluentButton OnClick="Login" Appearance="Appearance.Accent" Class="signin-btn-primary">
-                <img src="/img/autodesk-a.svg" class="signin-autodesk-logo" alt="" aria-hidden="true" slot="start" width="18" height="18" />
                 Sign in with Autodesk
             </FluentButton>
             <div class="signin-divider">
@@ -62,7 +61,7 @@
                 <span class="signin-divider-text">or</span>
                 <FluentDivider Style="flex: 1;" />
             </div>
-            <FluentAnchor Appearance="Appearance.Outline" Href="https://signin.autodesk.com/?flowId=9FJKUleRRX" Target="_blank" Rel="noopener noreferrer" Class="signin-btn-secondary">Create an Autodesk account</FluentAnchor>
+            <FluentAnchor Appearance="Appearance.Outline" Href="https://manage.autodesk.com/home" Target="_blank" Rel="noopener noreferrer" Class="signin-btn-secondary">Create an Autodesk account</FluentAnchor>
         </FluentCard>
     </div>
 </div>
