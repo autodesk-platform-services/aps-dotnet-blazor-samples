@@ -1,0 +1,151 @@
+.signin-columns {
+    display: grid;
+    grid-template-columns: 1fr 3fr;
+    grid-template-rows: 1fr;
+    flex: 1;
+    min-width: 0;
+}
+
+.signin-marketing {
+    background: linear-gradient(135deg, #0d2b6b 0%, #1858E8 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 48px 40px;
+    gap: 24px;
+    overflow: hidden;
+}
+
+.signin-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.signin-mark {
+    width: 40px;
+    height: 40px;
+}
+
+.signin-product-title {
+    font-size: 25px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.signin-marketing ::deep .signin-tagline {
+    font-size: 18px;
+    opacity: 0.85;
+    margin: 0;
+}
+
+.signin-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.signin-feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    color: white;
+}
+
+.signin-feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.signin-feature-text strong {
+    font-size: 17px;
+}
+
+.signin-feature-text span {
+    font-size: 15px;
+    opacity: 0.75;
+}
+
+.signin-welcome {
+    background: var(--neutral-layer-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.signin-welcome ::deep .signin-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    padding: 48px 40px;
+    max-width: 420px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: stretch;
+}
+
+.signin-welcome ::deep .signin-welcome-heading {
+    margin: 0;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.signin-welcome ::deep .signin-welcome-sub {
+    margin: 0;
+    text-align: center;
+    color: var(--neutral-foreground-hint);
+    font-size: 14px;
+}
+
+.signin-welcome ::deep .signin-btn-primary {
+    width: 100%;
+}
+
+.signin-autodesk-logo {
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+}
+
+.signin-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.signin-divider-text {
+    font-size: 12px;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+
+.signin-welcome ::deep .signin-btn-secondary {
+    display: block;
+    width: 100%;
+    text-align: center;
+    text-decoration: none;
+    font-size: 14px;
+}
+
+@media (max-width: 960px) {
+    .signin-columns {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+
+    .signin-marketing {
+        min-height: 280px;
+    }
+
+    .signin-welcome ::deep .signin-card {
+        padding: 32px 24px;
+    }
+}
