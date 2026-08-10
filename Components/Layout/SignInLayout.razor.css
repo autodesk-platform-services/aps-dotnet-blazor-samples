@@ -1,0 +1,41 @@
+.signin-shell {
+    display: flex;
+    flex-direction: column;
+    height: 100dvh;
+    overflow: hidden;
+}
+
+.signin-appbar {
+    height: 48px;
+    background: #1858E8;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+}
+
+.signin-appbar-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.signin-help-link {
+    color: white;
+    text-decoration: none;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.signin-help-link:hover {
+    text-decoration: underline;
+}
+
+.signin-body {
+    flex: 1;
+    overflow: hidden;
+}

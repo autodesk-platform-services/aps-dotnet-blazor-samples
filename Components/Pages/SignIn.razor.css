@@ -1,0 +1,179 @@
+.signin-columns {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    height: 100%;
+}
+
+.signin-marketing {
+    background: linear-gradient(135deg, #0d2b6b 0%, #1858E8 100%);
+    color: white;
+    display: flex;
+    flex-direction: column;
+    padding: 48px 40px;
+    gap: 24px;
+    overflow: hidden;
+}
+
+.signin-brand-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.signin-mark {
+    width: 40px;
+    height: 40px;
+}
+
+.signin-product-title {
+    font-size: 15px;
+    font-weight: 500;
+    line-height: 1.4;
+}
+
+.signin-tagline {
+    font-size: 14px;
+    opacity: 0.85;
+    margin: 0;
+}
+
+.signin-features {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+}
+
+.signin-feature-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+    color: white;
+}
+
+.signin-feature-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.signin-feature-text strong {
+    font-size: 14px;
+}
+
+.signin-feature-text span {
+    font-size: 12px;
+    opacity: 0.75;
+}
+
+.signin-hero {
+    margin-top: auto;
+    display: flex;
+    justify-content: center;
+    align-items: flex-end;
+}
+
+.signin-hero-img {
+    max-height: 160px;
+    max-width: 100%;
+}
+
+.signin-welcome {
+    background: var(--neutral-layer-2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.signin-card {
+    background: white;
+    border-radius: 12px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.12);
+    padding: 48px 40px;
+    max-width: 420px;
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    align-items: stretch;
+}
+
+.signin-welcome-heading {
+    margin: 0;
+    text-align: center;
+    font-size: 24px;
+    font-weight: 600;
+}
+
+.signin-welcome-sub {
+    margin: 0;
+    text-align: center;
+    color: var(--neutral-foreground-hint);
+    font-size: 14px;
+}
+
+.signin-btn-primary {
+    width: 100%;
+}
+
+.signin-autodesk-logo {
+    width: 18px;
+    height: 18px;
+    vertical-align: middle;
+}
+
+.signin-divider {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.signin-divider-line {
+    flex: 1;
+    border: none;
+    border-top: 1px solid var(--neutral-stroke-rest);
+    margin: 0;
+}
+
+.signin-divider-text {
+    font-size: 12px;
+    color: var(--neutral-foreground-hint);
+    white-space: nowrap;
+}
+
+.signin-btn-secondary {
+    display: block;
+    text-align: center;
+    padding: 8px 16px;
+    border: 1px solid var(--neutral-stroke-rest);
+    border-radius: 4px;
+    color: var(--neutral-foreground-rest);
+    text-decoration: none;
+    font-size: 14px;
+}
+
+.signin-btn-secondary:hover {
+    background: var(--neutral-layer-4);
+}
+
+@media (max-width: 960px) {
+    .signin-columns {
+        grid-template-columns: 1fr;
+        grid-template-rows: auto 1fr;
+    }
+
+    .signin-marketing {
+        min-height: 280px;
+    }
+
+    .signin-hero {
+        display: none;
+    }
+
+    .signin-card {
+        padding: 32px 24px;
+    }
+}

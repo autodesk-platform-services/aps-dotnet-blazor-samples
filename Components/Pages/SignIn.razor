@@ -7,20 +7,68 @@
 
 <PageTitle>Sign In</PageTitle>
 
-<FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="margin-top: 60px;">
-    <FluentCard Style="max-width: 450px; width: 100%; padding: 30px;">
-        <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="20">
-            <FluentIcon Value="@(new Icons.Regular.Size48.LockClosed())" Color="Color.Neutral" Style="align-self: center;" />
-            <h3 style="text-align: center; margin: 0;">Authentication Required</h3>
-            <p style="text-align: center; margin: 0; color: var(--neutral-foreground-hint);">
-                Please sign in with your Autodesk account to access your hubs and projects.
-            </p>
-            <FluentButton IconStart="@(new Icons.Regular.Size20.Person())" OnClick="Login" Appearance="Appearance.Accent">
-                Sign In with Autodesk
+<div class="signin-columns">
+    <div class="signin-marketing">
+        <div class="signin-brand-row">
+            <img src="/img/aps-mark.svg" class="signin-mark" alt="APS" />
+            <div class="signin-product-title">
+                <strong>Autodesk Platform Services</strong><br />
+                .NET Blazor Samples
+            </div>
+        </div>
+        <p class="signin-tagline">Build powerful integrations with the Autodesk Platform</p>
+        <ul class="signin-features">
+            <li class="signin-feature-item">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Cloud())" Color="Color.Fill" CustomColor="#ffffff" Style="flex-shrink: 0;" />
+                <div class="signin-feature-text">
+                    <strong>Cloud-Powered</strong>
+                    <span>Access your Autodesk data from anywhere</span>
+                </div>
+            </li>
+            <li class="signin-feature-item">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Code())" Color="Color.Fill" CustomColor="#ffffff" Style="flex-shrink: 0;" />
+                <div class="signin-feature-text">
+                    <strong>Developer Friendly</strong>
+                    <span>Clean APIs and SDK for rapid development</span>
+                </div>
+            </li>
+            <li class="signin-feature-item">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Flash())" Color="Color.Fill" CustomColor="#ffffff" Style="flex-shrink: 0;" />
+                <div class="signin-feature-text">
+                    <strong>Easy to Get Started</strong>
+                    <span>Start building in minutes with our samples</span>
+                </div>
+            </li>
+            <li class="signin-feature-item">
+                <FluentIcon Value="@(new Icons.Regular.Size24.Rocket())" Color="Color.Fill" CustomColor="#ffffff" Style="flex-shrink: 0;" />
+                <div class="signin-feature-text">
+                    <strong>Build the Future</strong>
+                    <span>Create next-gen AEC and manufacturing apps</span>
+                </div>
+            </li>
+        </ul>
+        <div class="signin-hero">
+            <img src="/img/aps-cube-hero.svg" alt="" aria-hidden="true" class="signin-hero-img" />
+        </div>
+    </div>
+    <div class="signin-welcome">
+        <div class="signin-card">
+            <FluentIcon Value="@(new Icons.Filled.Size32.PersonCircle())" Color="Color.Accent" Style="align-self: center; width: 48px; height: 48px;" />
+            <h2 class="signin-welcome-heading">Welcome Back</h2>
+            <p class="signin-welcome-sub">Sign in to your Autodesk account to continue to APS .NET Blazor Samples.</p>
+            <FluentButton OnClick="Login" Appearance="Appearance.Accent" Class="signin-btn-primary">
+                <img src="/img/autodesk-a.svg" class="signin-autodesk-logo" alt="" aria-hidden="true" slot="start" />
+                Sign in with Autodesk
             </FluentButton>
-        </FluentStack>
-    </FluentCard>
-</FluentStack>
+            <div class="signin-divider">
+                <hr class="signin-divider-line" />
+                <span class="signin-divider-text">or</span>
+                <hr class="signin-divider-line" />
+            </div>
+            <a href="https://signin.autodesk.com/?flowId=9FJKUleRRX" target="_blank" rel="noopener noreferrer" class="signin-btn-secondary">Create an Autodesk account</a>
+        </div>
+    </div>
+</div>
 
 @code {
     protected override void OnInitialized()
