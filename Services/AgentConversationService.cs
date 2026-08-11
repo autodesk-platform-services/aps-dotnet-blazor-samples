@@ -84,6 +84,7 @@ public class AgentConversationService : IAgentConversationService
         }
 
         session.Messages.Clear();
+        session.SerializedAgentSession = null;
         session.LastActivityAt = DateTime.UtcNow;
         await SaveToFileAsync();
     }
@@ -92,6 +93,40 @@ public class AgentConversationService : IAgentConversationService
     {
         _conversationsCache.TryGetValue(conversationId, out var session);
         return Task.FromResult(session);
+    }
+
+    public Task<JsonElement?> GetSerializedSessionAsync(string conversationId)
+    {
+        if (!_conversationsCache.TryGetValue(conversationId, out var session))
+        {
+            return Task.FromResult<JsonElement?>(null);
+        }
+
+        return Task.FromResult(session.SerializedAgentSession);
+    }
+
+    public async Task SaveSerializedSessionAsync(string conversationId, JsonElement serializedSession)
+    {
+        if (!_conversationsCache.TryGetValue(conversationId, out var session))
+        {
+            _logger.LogWarning("Conversation {ConversationId} not found for SaveSerializedSessionAsync", conversationId);
+            return;
+        }
+
+        session.SerializedAgentSession = serializedSession;
+        await SaveToFileAsync();
+    }
+
+    public async Task ClearSerializedSessionAsync(string conversationId)
+    {
+        if (!_conversationsCache.TryGetValue(conversationId, out var session))
+        {
+            _logger.LogWarning("Conversation {ConversationId} not found for ClearSerializedSessionAsync", conversationId);
+            return;
+        }
+
+        session.SerializedAgentSession = null;
+        await SaveToFileAsync();
     }
 
     private async Task SaveToFileAsync()

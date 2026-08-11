@@ -9,4 +9,7 @@ public interface IAgentConversationService
     Task AddMessageAsync(string conversationId, ConversationMessage message);
     Task ClearMessagesAsync(string conversationId);
     Task<ConversationSession?> GetConversationAsync(string conversationId);
+    Task<System.Text.Json.JsonElement?> GetSerializedSessionAsync(string conversationId);
+    Task SaveSerializedSessionAsync(string conversationId, System.Text.Json.JsonElement serializedSession);
+    Task ClearSerializedSessionAsync(string conversationId);
 }
