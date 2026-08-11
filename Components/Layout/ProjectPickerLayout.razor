@@ -1,0 +1,42 @@
+@inherits LayoutComponentBase
+@using ApsSamples.Services
+@inject IUserSessionService UserSession
+@inject NavigationManager NavigationManager
+
+<FluentLayout>
+    <FluentHeader>
+        <div>
+            Autodesk Platform Services .NET Blazor Samples
+        </div>
+        <FluentSpacer></FluentSpacer>
+        @if (!string.IsNullOrEmpty(UserSession.UserEmail))
+        {
+            <span style="font-size: 14px;">@UserSession.UserEmail</span>
+            <FluentSpacer Width="10"></FluentSpacer>
+            <FluentButton Appearance="Appearance.Lightweight"
+                          IconStart="@(new Icons.Regular.Size20.SignOut())"
+                          OnClick="Logout">
+                Logout
+            </FluentButton>
+        }
+    </FluentHeader>
+    <FluentBodyContent>
+        <div class="content">
+            @Body
+        </div>
+    </FluentBodyContent>
+</FluentLayout>
+
+<div id="blazor-error-ui" data-nosnippet>
+    An unhandled error has occurred.
+    <a href="." class="reload">Reload</a>
+    <span class="dismiss">🗙</span>
+</div>
+
+@code {
+    private void Logout()
+    {
+        UserSession.ClearSession();
+        NavigationManager.NavigateTo("/api/auth/logout", forceLoad: true);
+    }
+}

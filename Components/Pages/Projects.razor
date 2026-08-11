@@ -1,0 +1,154 @@
+@page "/projects"
+@layout ProjectPickerLayout
+@using ApsSamples.Components.Layout
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject ISelectedProjectService SelectedProjectService
+@inject DataManagementClient DataManagementClient
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Select Project</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <div>
+        <h1>Select a Project</h1>
+        <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+            Choose a project to work with
+        </p>
+    </div>
+
+    @if (_isLoading)
+    {
+        <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
+            <FluentProgressRing />
+            <span>Loading projects...</span>
+        </FluentStack>
+    }
+    else if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error">
+            @_errorMessage
+        </FluentMessageBar>
+        <FluentButton Appearance="Appearance.Accent" OnClick="LoadAllData">Retry</FluentButton>
+    }
+    else if (_allProjects != null && _allProjects.Any())
+    {
+        <FluentDataGrid Items="@_allProjects.AsQueryable()"
+                        ResizableColumns="true"
+                        RowSize="DataGridRowSize.Medium"
+                        Style="width: 100%;">
+            <TemplateColumn Title="Project Name" Sortable="true" SortBy="@_sortByName">
+                <FluentButton Appearance="Appearance.Lightweight"
+                              OnClick="@(() => SelectProject(context))">
+                    @context.ProjectName
+                </FluentButton>
+            </TemplateColumn>
+            <PropertyColumn Property="@(p => p.HubName)" Sortable="true" Title="Hub" />
+            <PropertyColumn Property="@(p => p.Region)" Title="Region" Width="100px" />
+        </FluentDataGrid>
+    }
+    else
+    {
+        <FluentMessageBar Intent="MessageIntent.Info">
+            No eligible projects were found.
+        </FluentMessageBar>
+    }
+</FluentStack>
+
+@code {
+    private bool _isLoading;
+    private string? _errorMessage;
+    private List<ProjectPickerItem>? _allProjects;
+
+    private readonly GridSort<ProjectPickerItem> _sortByName = GridSort<ProjectPickerItem>.ByAscending(p => p.ProjectName);
+
+    private record ProjectPickerItem(string ProjectId, string ProjectName, string HubId, string HubName, string Region);
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/signin");
+            return;
+        }
+
+        await LoadAllData();
+    }
+
+    private async Task LoadAllData()
+    {
+        try
+        {
+            _isLoading = true;
+            _errorMessage = null;
+            _allProjects = new List<ProjectPickerItem>();
+            StateHasChanged();
+
+            var accessToken = UserSession.AccessToken ?? string.Empty;
+
+            var hubs = await DataManagementClient.GetHubsAsync(accessToken: accessToken);
+            var hubsList = hubs.Data?.Where(h => h.Attributes?.Region == Region.US).ToList() ?? new List<HubData>();
+
+            foreach (var hub in hubsList)
+            {
+                var hubId = hub.Id ?? string.Empty;
+                var hubName = hub.Attributes?.Name ?? "Unknown Hub";
+                var hubRegion = hub.Attributes?.Region.ToString() ?? "N/A";
+
+                try
+                {
+                    var projects = await DataManagementClient.GetHubProjectsAsync(
+                        accessToken: accessToken,
+                        hubId: hubId);
+
+                    var projectsList = projects.Data?.Where(p => p.Attributes?.Extension?.Data["projectType"].ToString() == "ACC").ToList() ?? new List<ProjectData>();
+
+                    foreach (var project in projectsList)
+                    {
+                        var projectId = project.Id ?? string.Empty;
+                        var projectName = project.Attributes?.Name ?? "Unknown Project";
+
+                        if (projectName.Contains("Component Library", StringComparison.OrdinalIgnoreCase))
+                        {
+                            continue;
+                        }
+
+                        _allProjects.Add(new ProjectPickerItem(
+                            projectId,
+                            projectName,
+                            hubId,
+                            hubName,
+                            hubRegion));
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"Error loading projects from hub {hubName}: {ex.Message}");
+                }
+            }
+
+            _allProjects = _allProjects.OrderBy(p => p.ProjectName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading projects: {ex.Message}";
+        }
+        finally
+        {
+            _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task SelectProject(ProjectPickerItem item)
+    {
+        await SelectedProjectService.SetSelectedProjectAsync(
+            UserSession.UserId ?? string.Empty,
+            new SelectedProjectRecord(item.ProjectId, item.ProjectName, item.HubId, item.HubName, item.Region));
+        NavigationManager.NavigateTo("/");
+    }
+}

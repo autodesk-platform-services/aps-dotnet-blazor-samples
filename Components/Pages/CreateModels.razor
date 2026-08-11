@@ -1,4 +1,4 @@
-@page "/{ProjectId}/create-models"
+@page "/create-models"
 @using ApsSamples.Services
 @using Autodesk.DataManagement
 @using Autodesk.DataManagement.Model
@@ -8,6 +8,7 @@
 @inject RevitAutomationTools RevitAutomationTools
 @inject ICreationJobStatusService CreationJobStatusService
 @inject INamingStandardsService NamingStandardsService
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @rendermode InteractiveServer
@@ -15,11 +16,6 @@
 <PageTitle>Create Models - @_projectName</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-        <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="@(() => NavigationManager.NavigateTo("/create-models-projects"))">
-        Back to Projects
-    </FluentButton>
     <div>
         <h1>Create Revit Models</h1>
         @if (!string.IsNullOrEmpty(_projectName))
@@ -38,7 +34,7 @@
     <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
         <FluentButton Appearance="Appearance.Neutral"
                       IconStart="@(new Icons.Regular.Size20.History())"
-                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/model-creation-tracking"))">
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{_projectId}/model-creation-tracking"))">
             Tracking
             @if (_activeWorkItemsCount > 0)
             {
@@ -59,7 +55,7 @@
     <FluentStack Orientation="Orientation.Horizontal">
         <FluentStack Orientation="Orientation.Vertical" VerticalGap="15" Width="100%">
          <h3>Folder Explorer</h3>
-        <FolderExplorer ProjectId="@ProjectId"
+        <FolderExplorer ProjectId="@_projectId"
                         HubId="@_hubId"
                         OnFolderSelectionChanged="@OnFolderSelected" />
         </FluentStack>
@@ -359,7 +355,7 @@
                             Delimiter: "<strong>@(_folderNamingStandard.Definition.Delimiter ?? "-")</strong>"
                             @if (!string.IsNullOrEmpty(_folderNamingStandard.Description))
                             {
-                                <span> • @_folderNamingStandard.Description</span>
+                                <span> ï¿½ @_folderNamingStandard.Description</span>
                             }
                         </div>
                     </FluentStack>
@@ -497,9 +493,7 @@
 </FluentDialog>
 
 @code {
-    [Parameter]
-    public string? ProjectId { get; set; }
-
+    private string? _projectId;
     private string? _projectName;
     private string? _hubId;
     private string? _region;
@@ -606,18 +600,36 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
+            NavigationManager.NavigateTo("/projects");
             return;
         }
 
-        await LoadProjectDetails();
-        
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+        _hubId = selected.HubId;
+        _region = selected.Region;
+
+        // Extract Account ID from Hub ID (format: b.{guid})
+        if (_hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(_hubId[2..], out var accountIdGuid))
+        {
+            _accountId = accountIdGuid;
+        }
+
+        // Extract Project ID GUID from _projectId (format: b.{projectGuid})
+        if (_projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase)
+            && Guid.TryParse(_projectId[2..], out var projectIdGuid))
+        {
+            _projectIdGuid = projectIdGuid;
+        }
+
         // Start polling for active workitem counts
         _workItemPollingTimer = new System.Threading.Timer(async _ =>
         {
@@ -634,11 +646,11 @@
     {
         try
         {
-            if (string.IsNullOrEmpty(ProjectId))
+            if (string.IsNullOrEmpty(_projectId))
                 return;
 
             // Only count batch/creation workitems for this page
-            var workItems = CreationJobStatusService.GetJobsByProject(ProjectId);
+            var workItems = CreationJobStatusService.GetJobsByProject(_projectId);
             
             // Count active workitems (pending or in progress)
             _activeWorkItemsCount = workItems.Count(w =>
@@ -657,11 +669,11 @@
 
     private bool HasActiveWorkItems()
     {
-        if (string.IsNullOrEmpty(ProjectId))
+        if (string.IsNullOrEmpty(_projectId))
             return false;
 
         // Only check batch/creation workitems for this page
-        var workItems = CreationJobStatusService.GetJobsByProject(ProjectId);
+        var workItems = CreationJobStatusService.GetJobsByProject(_projectId);
         return workItems.Any(w =>
             w.Status == "pending" ||
             w.Status == "inprogress" ||
@@ -684,12 +696,12 @@
     {
         try
         {
-            if (string.IsNullOrEmpty(_selectedFolderId) || string.IsNullOrEmpty(ProjectId))
+            if (string.IsNullOrEmpty(_selectedFolderId) || string.IsNullOrEmpty(_projectId))
                 return;
 
             _folderNamingStandard = await NamingStandardsService.GetFolderNamingStandardAsync(
                 UserSession.AccessToken!,
-                ProjectId,
+                _projectId,
                 _selectedFolderId);
 
             if (_folderNamingStandard != null)
@@ -700,68 +712,6 @@
         catch (Exception ex)
         {
             Console.WriteLine($"Error checking folder naming standard: {ex.Message}");
-        }
-    }
-
-    private async Task LoadProjectDetails()
-    {
-        try
-        {
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
-
-            if (hubs.Data != null)
-            {
-                foreach (var hub in hubs.Data)
-                {
-                    var hubId = hub.Id ?? string.Empty;
-
-                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    // Extract Account ID from Hub ID (format: b.{guid})
-                    if (Guid.TryParse(hubId.Substring(2), out var accountIdGuid))
-                    {
-                        _accountId = accountIdGuid;
-                    }
-
-                    try
-                    {
-                        var projects = await DataManagementClient.GetHubProjectsAsync(
-                            accessToken: UserSession.AccessToken,
-                            hubId: hubId);
-
-                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                        if (project != null)
-                        {
-                            _projectName = project.Attributes?.Name ?? "Unknown Project";
-                            _hubId = hubId;
-                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
-
-                            // Extract Project ID GUID from ProjectId (format: b.{projectGuid})
-                            if (!string.IsNullOrEmpty(ProjectId) && ProjectId.StartsWith("b."))
-                            {
-                                if (Guid.TryParse(ProjectId.Substring(2), out var projectIdGuid))
-                                {
-                                    _projectIdGuid = projectIdGuid;
-                                }
-                            }
-
-                            // ProjectGuid will be obtained from the selected template
-                            // No need to search for it here
-
-                            return;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Error loading project details: {ex.Message}";
         }
     }
 
@@ -825,7 +775,7 @@
             var folders = await DataManagementClient.GetProjectTopFoldersAsync(
                 accessToken: UserSession.AccessToken,
                 hubId: _hubId!,
-                projectId: ProjectId!);
+                projectId: _projectId!);
 
             if (folders.Data != null)
             {
@@ -852,7 +802,7 @@
         {
             var contents = await DataManagementClient.GetFolderContentsAsync(
                 accessToken: UserSession.AccessToken,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 folderId: folderId);
 
             if (contents.Data != null)
@@ -1074,7 +1024,7 @@
                     // Store individual creation job details - no batch grouping
                     CreationJobStatusService.StoreCreationJobDetails(
                         workItemId: result.WorkItemId!,
-                        projectId: ProjectId!,
+                        projectId: _projectId!,
                         projectName: _projectName ?? "Unknown Project",
                         userName: UserSession.UserName ?? UserSession.UserEmail ?? "Unknown User",
                         modelName: model.ModelName);
@@ -1104,7 +1054,7 @@
                 }
 
                 // Navigate to model creation tracking page to show the jobs
-                NavigationManager.NavigateTo($"/{ProjectId}/model-creation-tracking");
+                NavigationManager.NavigateTo($"/{_projectId}/model-creation-tracking");
             }
             else
             {

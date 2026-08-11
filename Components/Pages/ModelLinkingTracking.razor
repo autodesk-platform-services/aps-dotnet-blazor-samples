@@ -14,9 +14,6 @@
 <PageTitle>Revit Links Change Tracking</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight" IconStart="@(new Icons.Regular.Size20.ArrowLeft())" OnClick="NavigateBackToLinkMatrix">
-        Back to Link Matrix
-    </FluentButton>
     <div>
         <h1>Revit Links Change Tracking</h1>
             <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
@@ -555,19 +552,6 @@
         NavigationManager.NavigateTo(reportUrl, true);
     }
 
-    private void NavigateBackToLinkMatrix()
-    {
-        if (!string.IsNullOrEmpty(ProjectId))
-        {
-            NavigationManager.NavigateTo($"/{ProjectId}/link-matrix");
-        }
-        else
-        {
-            // Fallback to projects if no ProjectId is available (shouldn't happen with new routing)
-            Logger.LogWarning("ProjectId is missing, navigating to projects page");
-            NavigationManager.NavigateTo("/manage-links-projects");
-        }
-    }
 
     private void ShowDetails(WorkItemInfo workItem)
     {

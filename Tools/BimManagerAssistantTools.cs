@@ -27,6 +27,7 @@ namespace ApsSamples.Tools
         public string? HubId { get; set; }
         public string? ProjectId { get; set; }
         public string? ConversationId { get; set; }
+        public string? AgentId { get; set; }
 
         [Description("Lists the Revit (.rvt) models found in the current project's folders, recursively. Returns each model's name and item ID. Always show both the name and the item ID together to the user (e.g. \"Model: Architecture.rvt - Id: <itemId>\"), so the ID stays visible in the conversation for later turns (e.g. publishing one of the listed models).")]
         public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
@@ -64,6 +65,8 @@ namespace ApsSamples.Tools
             var accessToken = session.AccessToken ?? string.Empty;
 
             var task = await taskService.CreateTaskAsync(conversationId, projectId, $"Publish: {modelName}");
+            task.AgentId = AgentId ?? string.Empty;
+            task.RequestedByUserId = session.UserId ?? string.Empty;
             task.Status = AgentTaskStatus.Running;
             task.ProgressDetail = "Submitting publish command.";
             await taskService.UpdateTaskAsync(task);

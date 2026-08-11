@@ -10,7 +10,9 @@ namespace ApsSamples.Services;
 
 public class AgentChatService : IAgentChatService
 {
-    private readonly AIAgent _chatClient;
+    private readonly IChatClient _chatClient;
+    private readonly IAgentRegistryService _agentRegistry;
+    private readonly IToolCatalogService _toolCatalog;
     private readonly BimManagerAssistantTools _bimManagerAssistantTools;
     private readonly IAgentConversationService _conversationService;
     private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
@@ -22,6 +24,9 @@ public class AgentChatService : IAgentChatService
         BimManagerAssistantTools bimManagerAssistantTools,
         IAgentConversationService conversationService)
     {
+        _chatClient = chatClient;
+        _agentRegistry = agentRegistry;
+        _toolCatalog = toolCatalog;
         _bimManagerAssistantTools = bimManagerAssistantTools;
         _conversationService = conversationService;
         _chatClient = chatClient.AsAIAgent(
@@ -59,6 +64,19 @@ public class AgentChatService : IAgentChatService
     {
         _bimManagerAssistantTools.ConversationId = conversationId;
         _currentConversationId = conversationId;
+    }
+
+    public async Task SetAgentContextAsync(string agentId)
+    {
+        var def = await _agentRegistry.GetAgentAsync(agentId)
+            ?? throw new InvalidOperationException($"Agent '{agentId}' not found.");
+
+        _bimManagerAssistantTools.AgentId = agentId;
+
+        _agent = _chatClient.AsAIAgent(
+            instructions: def.InstructionsText,
+            name: def.AgentName,
+            tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
     }
 
     public async IAsyncEnumerable<string> StreamResponseAsync(
