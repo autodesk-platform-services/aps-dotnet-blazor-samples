@@ -1,0 +1,65 @@
+.signin-shell {
+    display: flex;
+    flex-direction: column;
+    min-height: 100dvh;
+}
+
+.signin-appbar {
+    height: 48px;
+    background: #1858E8;
+    color: white;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    flex-shrink: 0;
+}
+
+.signin-appbar-title {
+    font-size: 16px;
+    font-weight: 600;
+    letter-spacing: 0.01em;
+}
+
+.signin-appbar ::deep .signin-help-link {
+    color: white;
+    text-decoration: none;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 14px;
+}
+
+.signin-appbar ::deep .signin-help-link:hover {
+    text-decoration: underline;
+}
+
+.signin-body {
+    display: flex;
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.signin-footer {
+    height: 40px;
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 24px;
+    background: var(--neutral-layer-2);
+    border-top: 1px solid var(--neutral-stroke-rest);
+    color: var(--neutral-foreground-hint);
+    font-size: 12px;
+}
+
+.signin-footer ::deep .signin-footer-link {
+    color: var(--neutral-foreground-hint);
+    text-decoration: none;
+    font-size: 12px;
+}
+
+.signin-footer ::deep .signin-footer-link:hover {
+    text-decoration: underline;
+}

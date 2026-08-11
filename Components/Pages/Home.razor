@@ -1,4 +1,4 @@
-﻿@page "/"
+@page "/"
 @using ApsSamples.Services
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
@@ -12,92 +12,106 @@
         <p>Explore Autodesk Platform Services with interactive tutorials and samples.</p>
     </div>
 
-    @if (!UserSession.IsAuthenticated)
-    {
-        <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="margin-top: 60px;">
-            <FluentCard Style="max-width: 450px; width: 100%; padding: 30px;">
-                <FluentStack Orientation="Orientation.Vertical" HorizontalAlignment="HorizontalAlignment.Center" VerticalGap="20">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.LockClosed())" Color="Color.Neutral" Style="align-self: center;" />
-                    <h3 style="text-align: center; margin: 0;">Authentication Required</h3>
-                    <p style="text-align: center; margin: 0; color: var(--neutral-foreground-hint);">
-                        Please sign in with your Autodesk account to access your hubs and projects.
-                    </p>
-                    <FluentButton IconStart="@(new Icons.Regular.Size20.Person())" OnClick="Login" Appearance="Appearance.Accent">
-                        Sign In with Autodesk
-                    </FluentButton>
-                </FluentStack>
-            </FluentCard>
-        </FluentStack>
-    }
-    else
-    {
-        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" Wrap="true">
-            <FluentCard Style="max-width: 400px; padding: 24px;">
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.DocumentAdd())" Color="Color.Accent" />
-                    <h3>Create Revit Models</h3>
-                    <p style="color: var(--neutral-foreground-hint);">
-                        Create Revit cloud models in your projects using Automation API.
-                    </p>
-                    <FluentButton Appearance="Appearance.Accent" 
-                                 IconStart="@(new Icons.Regular.Size20.DocumentAdd())"
-                                 OnClick="@(() => NavigationManager.NavigateTo("/create-models-projects"))">
-                        Create Models
-                    </FluentButton>
-                </FluentStack>
-            </FluentCard>
+    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" Wrap="true">
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.DocumentAdd())" Color="Color.Accent" />
+                <h3>Create Revit Models</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Create Revit cloud models in your projects using Automation API.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                             IconStart="@(new Icons.Regular.Size20.DocumentAdd())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/create-models"))">
+                    Create Models
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
 
-            <FluentCard Style="max-width: 400px; padding: 24px;">
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.TableSimple())" Color="Color.Accent" />
-                    <h3>Manage Revit Links</h3>
-                    <p style="color: var(--neutral-foreground-hint);">
-                        Add or remove Revit links from your models using Automation API.
-                    </p>
-                    <FluentButton Appearance="Appearance.Accent" 
-                                 IconStart="@(new Icons.Regular.Size20.TableSimple())"
-                                 OnClick="@(() => NavigationManager.NavigateTo("/manage-links-projects"))">
-                        Manage Links
-                    </FluentButton>
-                </FluentStack>
-            </FluentCard>
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.TableSimple())" Color="Color.Accent" />
+                <h3>Manage Revit Links</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Add or remove Revit links from your models using Automation API.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                             IconStart="@(new Icons.Regular.Size20.TableSimple())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/manage-links"))">
+                    Manage Links
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
 
-            <FluentCard Style="max-width: 400px; padding: 24px;">
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.DocumentOnePageMultiple())" Color="Color.Accent" />
-                    <h3>Create Sheets</h3>
-                    <p style="color: var(--neutral-foreground-hint);">
-                        Create multiple Sheets in Revit models using Automation API.
-                    </p>
-                    <FluentButton Appearance="Appearance.Accent" 
-                                 IconStart="@(new Icons.Regular.Size20.DocumentMultiple())"
-                                 OnClick="@(() => NavigationManager.NavigateTo("/create-sheets-projects"))">
-                        Create Sheets
-                    </FluentButton>
-                </FluentStack>
-            </FluentCard>
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.DocumentOnePageMultiple())" Color="Color.Accent" />
+                <h3>Create Sheets</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Create multiple Sheets in Revit models using Automation API.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                             IconStart="@(new Icons.Regular.Size20.DocumentMultiple())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/create-sheets"))">
+                    Create Sheets
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
 
-            <FluentCard Style="max-width: 400px; padding: 24px;">
-                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <FluentIcon Value="@(new Icons.Regular.Size48.Eye())" Color="Color.Accent" />
-                    <h3>View Models</h3>
-                    <p style="color: var(--neutral-foreground-hint);">
-                        View Revit cloud models using the APS Viewer.
-                    </p>
-                    <FluentButton Appearance="Appearance.Accent"
-                                 IconStart="@(new Icons.Regular.Size20.Eye())"
-                                 OnClick="@(() => NavigationManager.NavigateTo("/view-models-projects"))">
-                        View Models
-                    </FluentButton>
-                </FluentStack>
-            </FluentCard>
-        </FluentStack>
-    }
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.Cube())" Color="Color.Accent" />
+                <h3>Model Viewer</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    View Revit Cloud Models using the APS Viewer and JS Interop.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size20.Cube())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/view-models"))">
+                    Model Viewer
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.ChatMultiple())" Color="Color.Accent" />
+                <h3>Assistants</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Chat with AI Assistants to automate BIM tasks on your projects.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                             IconStart="@(new Icons.Regular.Size20.ChatMultiple())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/chat"))">
+                    Assistants
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.Bot())" Color="Color.Accent" />
+                <h3>Agents</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Configure and manage AI Agents for your projects.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                             IconStart="@(new Icons.Regular.Size20.Bot())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/agents"))">
+                    Agents
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+    </FluentStack>
 </FluentStack>
 
 @code {
-    private void Login()
+    protected override void OnInitialized()
     {
-        NavigationManager.NavigateTo("/api/auth/login?returnUrl=/", forceLoad: true);
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/signin");
+            return;
+        }
     }
 }

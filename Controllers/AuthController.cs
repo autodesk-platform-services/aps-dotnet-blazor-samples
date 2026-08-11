@@ -9,6 +9,7 @@ namespace ApsSamples.Controllers;
 public class AuthController(
     IAPSAuthenticationService apsAuth,
     IUserSessionService userSession,
+    ISelectedProjectService selectedProjectService,
     ILogger<AuthController> logger) : ControllerBase
 {
     [HttpGet("login")]
@@ -20,7 +21,9 @@ public class AuthController(
             Scopes.DataWrite,
             Scopes.DataCreate,
             Scopes.CodeAll,
-            Scopes.ViewablesRead
+            Scopes.ViewablesRead,
+            Scopes.AccountRead,
+            Scopes.AccountWrite
         };
 
         // Store return URL in session or state parameter
@@ -72,6 +75,7 @@ public class AuthController(
                 var userInfo = await apsAuth.GetUserInfoAsync(token);
                 userSession.UserName = userInfo.Name;
                 userSession.UserEmail = userInfo.Email;
+                userSession.UserId = userInfo.Sub;
                 
                 logger.LogInformation("User authenticated: {UserName} ({Email})", userInfo.Name, userInfo.Email);
             }
@@ -88,6 +92,13 @@ public class AuthController(
             // Get return URL from session
             var returnUrl = HttpContext.Session.GetString("ReturnUrl") ?? "/";
             HttpContext.Session.Remove("ReturnUrl");
+
+            var userId = userSession.UserId ?? string.Empty;
+            var selected = await selectedProjectService.GetSelectedProjectAsync(userId);
+            if (selected == null)
+            {
+                return Redirect("/projects");
+            }
 
             return Redirect(returnUrl);
         }

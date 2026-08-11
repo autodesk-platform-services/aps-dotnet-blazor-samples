@@ -1,4 +1,4 @@
-@page "/{ProjectId}/create-sheets"
+@page "/create-sheets"
 @using ApsSamples.Services
 @using Autodesk.DataManagement
 @using Autodesk.DataManagement.Model
@@ -8,18 +8,13 @@
 @inject NavigationManager NavigationManager
 @inject RevitAutomationTools RevitAutomationTools
 @inject ISheetCreationJobStatusService SheetCreationJobStatusService
+@inject ISelectedProjectService SelectedProjectService
 @implements IDisposable
 @rendermode InteractiveServer
 
 <PageTitle>Create Sheets - @_projectName</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="@(() => NavigationManager.NavigateTo("/create-sheets-projects"))">
-        Back to Projects
-    </FluentButton>
-
     <div>
         <h1>Create Sheets</h1>
         @if (!string.IsNullOrEmpty(_projectName))
@@ -33,7 +28,7 @@
     <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
         <FluentButton Appearance="Appearance.Neutral"
                       IconStart="@(new Icons.Regular.Size20.History())"
-                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/sheet-creation-tracking"))">
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{_projectId}/sheet-creation-tracking"))">
             Tracking
         </FluentButton>
     </FluentStack>
@@ -216,7 +211,7 @@
                     {
                         <div style="padding: 8px; background: var(--neutral-layer-1); border-radius: 4px;">
                             <FluentIcon Value="@(new Icons.Regular.Size16.DocumentMultiple())" Color="Color.Accent" Style="margin-right: 8px;" />
-                            <strong>@sheet.SheetNumber</strong> – @sheet.SheetName
+                            <strong>@sheet.SheetNumber</strong> ï¿½ @sheet.SheetName
                         </div>
                     }
                 </FluentStack>
@@ -240,9 +235,7 @@
 </FluentDialog>
 
 @code {
-    [Parameter]
-    public string? ProjectId { get; set; }
-
+    private string? _projectId;
     private string? _projectName;
     private string? _hubId;
     private string? _region;
@@ -281,66 +274,28 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/create-sheets-projects");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
+            NavigationManager.NavigateTo("/projects");
             return;
         }
 
-        await LoadProjectDetails();
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+        _hubId = selected.HubId;
+        _region = selected.Region;
+
         await LoadAvailableModels();
     }
 
     public void Dispose()
     {
         // Cleanup if needed
-    }
-
-    private async Task LoadProjectDetails()
-    {
-        try
-        {
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
-
-            if (hubs.Data != null)
-            {
-                foreach (var hub in hubs.Data)
-                {
-                    var hubId = hub.Id ?? string.Empty;
-
-                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    try
-                    {
-                        var projects = await DataManagementClient.GetHubProjectsAsync(
-                            accessToken: UserSession.AccessToken,
-                            hubId: hubId);
-
-                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                        if (project != null)
-                        {
-                            _projectName = project.Attributes?.Name ?? "Unknown Project";
-                            _hubId = hubId;
-                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
-                            return;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            _errorMessage = $"Error loading project details: {ex.Message}";
-        }
     }
 
     private async Task LoadAvailableModels()
@@ -354,7 +309,7 @@
             var folders = await DataManagementClient.GetProjectTopFoldersAsync(
                 accessToken: UserSession.AccessToken,
                 hubId: _hubId!,
-                projectId: ProjectId!);
+                projectId: _projectId!);
 
             if (folders.Data != null)
             {
@@ -383,7 +338,7 @@
         {
             var contents = await DataManagementClient.GetFolderContentsAsync(
                 accessToken: UserSession.AccessToken,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 folderId: folderId);
 
             if (contents.Data != null)
@@ -570,7 +525,7 @@
 
             SheetCreationJobStatusService.StoreSheetCreationJobDetails(
                 workItemId: result.WorkItemId!,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 projectName: _projectName ?? string.Empty,
                 userName: UserSession.UserName ?? string.Empty,
                 modelName: _selectedModel.ModelName,
@@ -578,7 +533,7 @@
                 titleBlockName: string.IsNullOrWhiteSpace(_titleBlockName) ? null : _titleBlockName.Trim());
 
             _sheetsToCreate.Clear();
-            NavigationManager.NavigateTo($"/{ProjectId}/sheet-creation-tracking");
+            NavigationManager.NavigateTo($"/{_projectId}/sheet-creation-tracking");
         }
         catch (Exception ex)
         {

@@ -6,6 +6,7 @@ public interface IUserSessionService
     string? RefreshToken { get; set; }
     string? UserName { get; set; }
     string? UserEmail { get; set; }
+    string? UserId { get; set; }
     bool IsAuthenticated { get; }
     void ClearSession();
 }
@@ -17,6 +18,7 @@ public class UserSessionService : IUserSessionService
     private const string RefreshTokenKey = "APS_RefreshToken";
     private const string UserNameKey = "APS_UserName";
     private const string UserEmailKey = "APS_UserEmail";
+    private const string UserIdKey = "APS_UserId";
 
     public UserSessionService(IHttpContextAccessor httpContextAccessor)
     {
@@ -79,6 +81,21 @@ public class UserSessionService : IUserSessionService
                     _httpContextAccessor.HttpContext.Session.Remove(UserEmailKey);
                 else
                     _httpContextAccessor.HttpContext.Session.SetString(UserEmailKey, value);
+            }
+        }
+    }
+
+    public string? UserId
+    {
+        get => _httpContextAccessor.HttpContext?.Session.GetString(UserIdKey);
+        set
+        {
+            if (_httpContextAccessor.HttpContext != null)
+            {
+                if (string.IsNullOrEmpty(value))
+                    _httpContextAccessor.HttpContext.Session.Remove(UserIdKey);
+                else
+                    _httpContextAccessor.HttpContext.Session.SetString(UserIdKey, value);
             }
         }
     }

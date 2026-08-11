@@ -1,4 +1,4 @@
-@page "/{ProjectId}/manage-links"
+@page "/manage-links"
 @using ApsSamples.Extensions
 @using ApsSamples.Services
 @using Autodesk.DataManagement
@@ -9,6 +9,7 @@
 @inject IAccLinkedFilesService AccLinkedFilesService
 @inject RevitAutomationTools RevitAutomationTools
 @inject ILinkingJobStatusService LinkingJobStatusService
+@inject ISelectedProjectService SelectedProjectService
 @inject NavigationManager NavigationManager
 @implements IDisposable
 @rendermode InteractiveServer
@@ -16,11 +17,6 @@
 <PageTitle>Manage Revit Links - @_projectName</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-        <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="@(() => NavigationManager.NavigateTo("/manage-links-projects"))">
-        Back to Projects
-    </FluentButton>
     <div>
         <h1>Manage Revit Links</h1>
         @if (!string.IsNullOrEmpty(_projectName))
@@ -79,7 +75,7 @@
 
         <FluentButton Appearance="Appearance.Neutral"
                       IconStart="@(new Icons.Regular.Size20.History())"
-                      OnClick="@(() => NavigationManager.NavigateTo($"/{ProjectId}/revit-links-change-tracking"))"
+                      OnClick="@(() => NavigationManager.NavigateTo($"/{_projectId}/revit-links-change-tracking"))"
                       Title="View links change history">
             Changelog
         </FluentButton>
@@ -129,7 +125,7 @@
                                             }
                                             else
                                             {
-                                                <span style="color: var(--neutral-foreground-hint); opacity: 0.3;">—</span>
+                                                <span style="color: var(--neutral-foreground-hint); opacity: 0.3;">ï¿½</span>
                                             }
                                         </td>
                                     }
@@ -180,7 +176,7 @@
                                         <td style="padding: 12px; border: 1px solid var(--neutral-stroke-rest); text-align: center; background-color: @GetCellBackgroundWithPending(rowModel, colModel, hasPendingChange, hasActiveWorkItem);">
                                             @if (rowModel.ItemId == colModel.ItemId)
                                             {
-                                                <span style="color: var(--neutral-foreground-hint);">—</span>
+                                                <span style="color: var(--neutral-foreground-hint);">ï¿½</span>
                                             }
                                             else if (hasActiveWorkItem)
                                             {
@@ -256,7 +252,7 @@
                         <span style="font-size: 14px;">Pending addition</span>
                     </div>
                     <div style="display: flex; align-items: center; gap: 8px;">
-                        <span style="color: var(--neutral-foreground-hint);">—</span>
+                        <span style="color: var(--neutral-foreground-hint);">ï¿½</span>
                         <span style="font-size: 14px;">Same model</span>
                     </div>
                 </div>
@@ -306,9 +302,7 @@
 </FluentDialog>
 
 @code {
-    [Parameter]
-    public string? ProjectId { get; set; }
-
+    private string? _projectId;
     private string? _projectName;
     private string? _hubId;
     private string? _region;
@@ -343,15 +337,21 @@
     {
         if (!UserSession.IsAuthenticated)
         {
-            NavigationManager.NavigateTo("/");
+            NavigationManager.NavigateTo("/signin");
             return;
         }
 
-        if (string.IsNullOrEmpty(ProjectId))
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
         {
-            _errorMessage = "Project ID is required.";
+            NavigationManager.NavigateTo("/projects");
             return;
         }
+
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+        _hubId = selected.HubId;
+        _region = selected.Region;
 
         await LoadLinkMatrix();
 
@@ -377,14 +377,11 @@
             _linkMatrix = new Dictionary<string, List<string>>();
             StateHasChanged();
 
-            // Get project details
-            await LoadProjectDetails();
-
             // Get all folders in the project
             var folders = await DataManagementClient.GetProjectTopFoldersAsync(
                 accessToken: UserSession.AccessToken,
                 hubId: _hubId!,
-                projectId: ProjectId!);
+                projectId: _projectId!);
 
             // Recursively find all Revit files
             if (folders.Data != null)
@@ -412,57 +409,13 @@
         }
     }
 
-    private async Task LoadProjectDetails()
-    {
-        try
-        {
-            // Try to get project from all hubs
-            var hubs = await DataManagementClient.GetHubsAsync(accessToken: UserSession.AccessToken);
-
-            if (hubs.Data != null)
-            {
-                foreach (var hub in hubs.Data)
-                {
-                    var hubId = hub.Id ?? string.Empty;
-
-                    if (!hubId.StartsWith("b.", StringComparison.OrdinalIgnoreCase))
-                        continue;
-
-                    try
-                    {
-                        var projects = await DataManagementClient.GetHubProjectsAsync(
-                            accessToken: UserSession.AccessToken,
-                            hubId: hubId);
-
-                        var project = projects.Data?.FirstOrDefault(p => p.Id == ProjectId);
-                        if (project != null)
-                        {
-                            _projectName = project.Attributes?.Name ?? "Unknown Project";
-                            _hubId = hubId;
-                            _region = hub.Attributes?.Region != null ? hub.Attributes.Region.ToString() : "US";
-                            return;
-                        }
-                    }
-                    catch
-                    {
-                        continue;
-                    }
-                }
-            }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"Error loading project details: {ex.Message}");
-        }
-    }
-
     private async Task ProcessFolder(string folderId)
     {
         try
         {
             var contents = await DataManagementClient.GetFolderContentsAsync(
                 accessToken: UserSession.AccessToken,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 folderId: folderId);
 
             if (contents.Data != null)
@@ -518,7 +471,7 @@
             {
                 var response = await AccLinkedFilesService.GetLinkedFilesAsync(
                     UserSession.AccessToken,
-                    ProjectId!,
+                    _projectId!,
                     model.VersionId);
 
                 if (response?.LinkedFiles?.Results != null)
@@ -546,7 +499,7 @@
             // Get version details to extract ProjectGuid and ModelGuid from extension data
             var version = await DataManagementClient.GetVersionAsync(
                 accessToken: UserSession.AccessToken,
-                projectId: ProjectId!,
+                projectId: _projectId!,
                 versionId: model.VersionId);
 
             if (version?.Data?.Attributes?.Extension?.Data != null)
@@ -625,10 +578,10 @@
     {
         try
         {
-            if (string.IsNullOrEmpty(ProjectId))
+            if (string.IsNullOrEmpty(_projectId))
                 return;
 
-            var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+            var workItems = LinkingJobStatusService.GetJobsByProject(_projectId);
 
             // Count active workitems (pending or in progress)
             _activeWorkItemsCount = workItems.Count(w =>
@@ -647,10 +600,10 @@
 
     private bool HasActiveWorkItems()
     {
-        if (string.IsNullOrEmpty(ProjectId))
+        if (string.IsNullOrEmpty(_projectId))
             return false;
 
-        var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+        var workItems = LinkingJobStatusService.GetJobsByProject(_projectId);
         return workItems.Any(w =>
             w.Status == "pending" ||
             w.Status == "inprogress" ||
@@ -660,10 +613,10 @@
 
     private bool HasActiveWorkItemForModel(string modelName)
     {
-        if (string.IsNullOrEmpty(ProjectId))
+        if (string.IsNullOrEmpty(_projectId))
             return false;
 
-        var workItems = LinkingJobStatusService.GetJobsByProject(ProjectId);
+        var workItems = LinkingJobStatusService.GetJobsByProject(_projectId);
         return workItems.Any(w =>
             w.ModelName == modelName &&
             (w.Status == "pending" ||
@@ -833,7 +786,7 @@
                     // Store detailed workitem information
                     LinkingJobStatusService.StoreLinkingJobDetails(
                         result.WorkItemId!,
-                        ProjectId!,
+                        _projectId!,
                         _projectName ?? "Unknown Project",
                         UserSession.UserName ?? UserSession.UserEmail ?? "Unknown User",
                         changeDetails);
@@ -842,7 +795,7 @@
                     // Use ItemId (the URN), not ModelGuid
                     LinkingJobStatusService.StorePublishInfo(
                         result.WorkItemId!,
-                        ProjectId!,
+                        _projectId!,
                         hostModel.ItemId,
                         UserSession.AccessToken!);
                 }
@@ -857,7 +810,7 @@
             _pendingChanges.Clear();
 
             // Navigate to workitem status page for this project
-            NavigationManager.NavigateTo($"/{ProjectId}/revit-links-change-tracking");
+            NavigationManager.NavigateTo($"/{_projectId}/revit-links-change-tracking");
         }
         catch (Exception ex)
         {

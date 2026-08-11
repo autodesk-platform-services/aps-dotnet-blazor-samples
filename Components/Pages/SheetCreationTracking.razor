@@ -11,12 +11,6 @@
 <PageTitle>Sheet Creation Tracking</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
-    <FluentButton Appearance="Appearance.Lightweight"
-                  IconStart="@(new Icons.Regular.Size20.ArrowLeft())"
-                  OnClick="NavigateBackToCreateSheets">
-        Back to Create Sheets
-    </FluentButton>
-
     <div>
         <h1>Sheet Creation Tracking</h1>
         <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
@@ -244,7 +238,7 @@
                                     <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
                                         <FluentIcon Value="@(new Icons.Regular.Size16.DocumentMultiple())" Color="Color.Accent" />
                                         <strong>@sheet.SheetNumber</strong>
-                                        <span style="color: var(--neutral-foreground-hint);">–</span>
+                                        <span style="color: var(--neutral-foreground-hint);">ï¿½</span>
                                         <span>@sheet.SheetName</span>
                                     </FluentStack>
                                 </FluentCard>
@@ -402,13 +396,6 @@
         NavigationManager.NavigateTo(reportUrl, true);
     }
 
-    private void NavigateBackToCreateSheets()
-    {
-        if (!string.IsNullOrEmpty(ProjectId))
-            NavigationManager.NavigateTo($"/{ProjectId}/create-sheets");
-        else
-            NavigationManager.NavigateTo("/create-sheets-projects");
-    }
 
     private void ShowDetails(WorkItemInfo workItem)
     {

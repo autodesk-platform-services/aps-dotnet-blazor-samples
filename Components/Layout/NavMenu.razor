@@ -9,10 +9,12 @@
             <FluentNavLink Href="/" Match="NavLinkMatch.All" Icon="@(new Icons.Regular.Size20.Home())" IconColor="Color.Accent">Home</FluentNavLink>
             @if (UserSession.IsAuthenticated)
             {
-                <FluentNavLink Href="create-models-projects" Icon="@(new Icons.Regular.Size20.DocumentAdd())" IconColor="Color.Accent">Create Revit Models</FluentNavLink>
-                <FluentNavLink Href="manage-links-projects" Icon="@(new Icons.Regular.Size20.Link())" IconColor="Color.Accent">Manage Revit Links</FluentNavLink>
-                <FluentNavLink Href="create-sheets-projects" Icon="@(new Icons.Regular.Size20.DocumentMultiple())" IconColor="Color.Accent">Create Sheets</FluentNavLink>
-                <FluentNavLink Href="view-models-projects" Icon="@(new Icons.Regular.Size20.Eye())" IconColor="Color.Accent">View Models</FluentNavLink>
+                <FluentNavLink Href="create-models" Icon="@(new Icons.Regular.Size20.DocumentAdd())" IconColor="Color.Accent">Create Revit Models</FluentNavLink>
+                <FluentNavLink Href="manage-links" Icon="@(new Icons.Regular.Size20.Link())" IconColor="Color.Accent">Manage Revit Links</FluentNavLink>
+                <FluentNavLink Href="create-sheets" Icon="@(new Icons.Regular.Size20.DocumentMultiple())" IconColor="Color.Accent">Create Sheets</FluentNavLink>
+                <FluentNavLink Href="view-models" Icon="@(new Icons.Regular.Size20.Cube())" IconColor="Color.Accent">Model Viewer</FluentNavLink>
+                <FluentNavLink Href="chat" Icon="@(new Icons.Regular.Size20.ChatMultiple())" IconColor="Color.Accent">Assistants</FluentNavLink>
+                <FluentNavLink Href="agents" Icon="@(new Icons.Regular.Size20.Bot())" IconColor="Color.Accent">Agents</FluentNavLink>
             }
         </FluentNavMenu>
     </nav>

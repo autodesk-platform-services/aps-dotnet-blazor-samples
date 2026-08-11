@@ -14,14 +14,25 @@
     <Content Remove="Data\creation-jobs.json" />
     <Content Remove="Data\linking-jobs.json" />
     <Content Remove="Data\sheet-creation-jobs.json" />
+    <Content Remove="Data\agent-conversations.json" />
+    <Content Remove="Data\agent-tasks.json" />
+    <Content Remove="Data\ssa-keys.json" />
+    <Content Remove="Data\agents.json" />
   </ItemGroup>
 
   <ItemGroup>
 	<PackageReference Include="Autodesk.Authentication" Version="2.0.1" />
+    <PackageReference Include="Autodesk.Construction.AccountAdmin" Version="2.2.1" />
     <PackageReference Include="Autodesk.DataManagement" Version="2.1.3" />
     <PackageReference Include="Autodesk.Forge.DesignAutomation" Version="6.0.2" />
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.14.0" />
-    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.14.0" />
+    <PackageReference Include="Autodesk.SecureServiceAccount" Version="1.0.0-beta1" />
+    <PackageReference Include="Autodesk.Webhooks" Version="3.4.0" />
+    <PackageReference Include="Markdig" Version="1.3.2" />
+    <PackageReference Include="Microsoft.Agents.AI" Version="1.13.0" />
+    <PackageReference Include="Microsoft.Extensions.AI" Version="10.8.0" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components" Version="4.14.3" />
+    <PackageReference Include="Microsoft.FluentUI.AspNetCore.Components.Icons" Version="4.14.3" />
+    <PackageReference Include="OllamaSharp" Version="5.4.27" />
   </ItemGroup>
 
   <ItemGroup>
