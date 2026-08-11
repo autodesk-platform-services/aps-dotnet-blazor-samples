@@ -2,7 +2,6 @@ using ApsSamples.Models;
 using ApsSamples.Tools;
 using Microsoft.Agents.AI;
 using Microsoft.Extensions.AI;
-using System.Collections.Concurrent;
 using System.Runtime.CompilerServices;
 
 namespace ApsSamples.Services;
@@ -14,7 +13,6 @@ public class AgentChatService : IAgentChatService
     private readonly IToolCatalogService _toolCatalog;
     private readonly BimManagerAssistantTools _bimManagerAssistantTools;
     private readonly IAgentConversationService _conversationService;
-    private readonly ConcurrentDictionary<string, AgentSession> _sessions = new();
     private AIAgent? _agent;
     private string? _currentConversationId;
 
@@ -76,7 +74,16 @@ public class AgentChatService : IAgentChatService
         }
 
         var conversationId = _currentConversationId;
-        var session = await GetOrLoadSessionAsync(conversationId, ct);
+        var session = await _conversationService.GetOrLoadAgentSessionAsync(
+            conversationId,
+            async innerCt =>
+            {
+                var persisted = await _conversationService.GetSerializedSessionAsync(conversationId);
+                return persisted.HasValue
+                    ? await _agent!.DeserializeSessionAsync(persisted.Value, cancellationToken: innerCt)
+                    : await _agent!.CreateSessionAsync(innerCt);
+            },
+            ct);
 
         try
         {
@@ -103,25 +110,7 @@ public class AgentChatService : IAgentChatService
             throw new InvalidOperationException("SetAgentContextAsync must be called before ResetSessionAsync.");
         }
 
-        var session = await _agent.CreateSessionAsync(ct);
-        _sessions[conversationId] = session;
-        var serialized = await _agent.SerializeSessionAsync(session, cancellationToken: ct);
-        await _conversationService.SaveSerializedSessionAsync(conversationId, serialized);
-    }
-
-    private async Task<AgentSession> GetOrLoadSessionAsync(string conversationId, CancellationToken ct)
-    {
-        if (_sessions.TryGetValue(conversationId, out var existing))
-        {
-            return existing;
-        }
-
-        var persisted = await _conversationService.GetSerializedSessionAsync(conversationId);
-        AgentSession session = persisted.HasValue
-            ? await _agent!.DeserializeSessionAsync(persisted.Value, cancellationToken: ct)
-            : await _agent!.CreateSessionAsync(ct);
-
-        _sessions[conversationId] = session;
-        return session;
+        await _conversationService.ClearSerializedSessionAsync(conversationId);
+        await _conversationService.RemoveAgentSessionAsync(conversationId);
     }
 }
