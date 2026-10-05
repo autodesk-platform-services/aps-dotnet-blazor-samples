@@ -11,6 +11,13 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Remove="ApsSamples.Tests\**" />
+    <Content Remove="ApsSamples.Tests\**" />
+    <EmbeddedResource Remove="ApsSamples.Tests\**" />
+    <None Remove="ApsSamples.Tests\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Content Remove="Data\creation-jobs.json" />
     <Content Remove="Data\linking-jobs.json" />
     <Content Remove="Data\sheet-creation-jobs.json" />
