@@ -850,7 +850,6 @@
         if (_conversation == null) return;
 
         await ConversationService.ClearMessagesAsync(_conversation.ConversationId);
-        await ChatService.ResetSessionAsync(_conversation.ConversationId);
         _conversation.Messages.Clear();
         await InvokeAsync(StateHasChanged);
     }

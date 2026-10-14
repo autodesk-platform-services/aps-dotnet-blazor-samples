@@ -1,12 +1,15 @@
 using System.Collections.Concurrent;
 using System.Text.Json;
 using ApsSamples.Models;
+using Microsoft.Agents.AI;
 
 namespace ApsSamples.Services;
 
 public class AgentConversationService : IAgentConversationService
 {
     private readonly ConcurrentDictionary<string, ConversationSession> _conversationsCache = new();
+    private readonly ConcurrentDictionary<string, AgentSession> _agentSessions = new();
+    private readonly ConcurrentDictionary<string, SemaphoreSlim> _sessionLocks = new();
     private readonly ILogger<AgentConversationService> _logger;
     private readonly string _filePath;
     private readonly SemaphoreSlim _fileLock = new(1, 1);
@@ -87,6 +90,39 @@ public class AgentConversationService : IAgentConversationService
         session.SerializedAgentSession = null;
         session.LastActivityAt = DateTime.UtcNow;
         await SaveToFileAsync();
+        await RemoveAgentSessionAsync(conversationId);
+    }
+
+    public async Task<AgentSession> GetOrLoadAgentSessionAsync(string conversationId, Func<CancellationToken, Task<AgentSession>> factory, CancellationToken ct = default)
+    {
+        if (_agentSessions.TryGetValue(conversationId, out var cached))
+        {
+            return cached;
+        }
+
+        var gate = _sessionLocks.GetOrAdd(conversationId, _ => new SemaphoreSlim(1, 1));
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (_agentSessions.TryGetValue(conversationId, out cached))
+            {
+                return cached;
+            }
+
+            var created = await factory(ct);
+            _agentSessions[conversationId] = created;
+            return created;
+        }
+        finally
+        {
+            gate.Release();
+        }
+    }
+
+    public Task RemoveAgentSessionAsync(string conversationId)
+    {
+        _agentSessions.TryRemove(conversationId, out _);
+        return Task.CompletedTask;
     }
 
     public Task<ConversationSession?> GetConversationAsync(string conversationId)
