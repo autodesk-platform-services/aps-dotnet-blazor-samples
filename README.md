@@ -129,7 +129,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 ### Known limitations
 
 - Job status for Create Revit Models, Manage Revit Links, and Create Sheets is stored in-memory; restarting the application clears pending job history.
-- AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This can be changed to database storage if needed.
+- AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This is a **demo-only file store** — all data is lost if the files are deleted, and it is not suitable for concurrent multi-user production deployments. Production forks should replace `AgentConversationService` with a database-backed implementation.
 - The AI Assistants feature requires the BIM Manager role on the selected project. Additional roles can be configured in the code by modifying `ProjectRoleService`.
 - The Automation API activity must already exist and be published before running the sample.
 - Ollama must be running and accessible for the AI Assistants feature to function.

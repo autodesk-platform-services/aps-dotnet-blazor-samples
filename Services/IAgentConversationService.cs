@@ -1,4 +1,5 @@
 using ApsSamples.Models;
+using Microsoft.Agents.AI;
 
 namespace ApsSamples.Services;
 
@@ -12,4 +13,6 @@ public interface IAgentConversationService
     Task<System.Text.Json.JsonElement?> GetSerializedSessionAsync(string conversationId);
     Task SaveSerializedSessionAsync(string conversationId, System.Text.Json.JsonElement serializedSession);
     Task ClearSerializedSessionAsync(string conversationId);
+    Task<AgentSession> GetOrLoadAgentSessionAsync(string conversationId, Func<CancellationToken, Task<AgentSession>> factory, CancellationToken ct = default);
+    Task RemoveAgentSessionAsync(string conversationId);
 }
