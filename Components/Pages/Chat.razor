@@ -681,11 +681,9 @@
 
         // Multiple accessible agents: if the user already has a conversation with one of them,
         // resume the most recent conversation and lock to that agent so the selector never shows.
-        var existing = new List<ConversationSession>();
-        foreach (var agent in _accessibleAgents)
-        {
-            existing.AddRange(await ConversationService.GetConversationsAsync(_projectId, _userId, agent.AgentId));
-        }
+        var existing = (await ConversationService.GetConversationsAsync(_projectId, _userId))
+            .Where(c => _accessibleAgents.Any(a => a.AgentId == c.AgentId))
+            .ToList();
 
         var mostRecent = existing.OrderByDescending(c => c.LastActivityAt).FirstOrDefault();
         if (mostRecent != null)
@@ -707,7 +705,9 @@
 
         await ChatService.SetAgentContextAsync(_selectedAgent.AgentId);
 
-        _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId, _selectedAgent.AgentId)).ToList();
+        _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId))
+            .Where(c => c.AgentId == _selectedAgent.AgentId)
+            .ToList();
         if (_conversations.Count == 0)
         {
             _conversations.Add(await ConversationService.CreateConversationAsync(_projectId, _userId, _selectedAgent.AgentId));

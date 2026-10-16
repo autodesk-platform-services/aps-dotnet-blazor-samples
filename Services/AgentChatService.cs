@@ -74,11 +74,13 @@ public class AgentChatService : IAgentChatService
         }
 
         var conversationId = _currentConversationId;
+        var agentId = _bimManagerAssistantTools.AgentId ?? string.Empty;
         var session = await _conversationService.GetOrLoadAgentSessionAsync(
             conversationId,
+            agentId,
             async innerCt =>
             {
-                var persisted = await _conversationService.GetSerializedSessionAsync(conversationId);
+                var persisted = await _conversationService.GetSerializedSessionAsync(conversationId, agentId);
                 return persisted.HasValue
                     ? await _agent!.DeserializeSessionAsync(persisted.Value, cancellationToken: innerCt)
                     : await _agent!.CreateSessionAsync(innerCt);
@@ -99,7 +101,7 @@ public class AgentChatService : IAgentChatService
         finally
         {
             var serialized = await _agent.SerializeSessionAsync(session, cancellationToken: CancellationToken.None);
-            await _conversationService.SaveSerializedSessionAsync(conversationId, serialized);
+            await _conversationService.SaveSerializedSessionAsync(conversationId, agentId, serialized);
         }
     }
 
