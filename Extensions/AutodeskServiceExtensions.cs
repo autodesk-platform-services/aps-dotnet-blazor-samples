@@ -36,7 +36,7 @@ public static class AutodeskServiceExtensions
         services.AddScoped<IRevitAutomationService, RevitAutomationService>();
         services.AddScoped<RevitAutomationTools>();
         services.AddScoped<AgentToolContext>();
-        services.AddScoped<BimManagerAssistantTools>();
+        services.AddScoped<RevitModelTools>();
         services.AddScoped<IProjectRoleService, ProjectRoleService>();
         services.AddScoped<ICompanyService, CompanyService>();
 
