@@ -20,7 +20,8 @@ public class ToolCatalogServiceTests
         var context = new AgentToolContext(null!, null!);
         return new StubServiceProvider(
             new RevitModelTools(null!, null!, context, null!, null!, null!, null!, null!, null!),
-            new FolderTools(null!, context));
+            new FolderTools(null!, context),
+            new ProjectUserTools(null!, null!, null!, context));
     }
 
     private static readonly ToolCatalogService Catalog = new();
@@ -35,6 +36,11 @@ public class ToolCatalogServiceTests
         { "list-folders", "ListFolders" },
         { "create-folder", "CreateFolder" },
         { "create-folder-structure", "CreateFolderStructure" },
+        { "search-hub-users", "SearchHubUsers" },
+        { "find-project-users", "FindProjectUsers" },
+        { "list-project-roles-companies", "ListProjectRolesAndCompanies" },
+        { "add-project-user", "AddUserToProject" },
+        { "update-project-user", "UpdateProjectUser" },
     };
 
     [Theory]
@@ -57,6 +63,18 @@ public class ToolCatalogServiceTests
     {
         var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
         Assert.Equal(ToolModules.Folders, tool.Module);
+    }
+
+    [Theory]
+    [InlineData("search-hub-users")]
+    [InlineData("find-project-users")]
+    [InlineData("list-project-roles-companies")]
+    [InlineData("add-project-user")]
+    [InlineData("update-project-user")]
+    public void ProjectUserTools_AreListedUnderProjectUsers(string toolId)
+    {
+        var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
+        Assert.Equal(ToolModules.ProjectUsers, tool.Module);
     }
 
     [Fact]

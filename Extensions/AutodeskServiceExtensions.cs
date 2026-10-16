@@ -38,8 +38,10 @@ public static class AutodeskServiceExtensions
         services.AddScoped<AgentToolContext>();
         services.AddScoped<RevitModelTools>();
         services.AddScoped<FolderTools>();
+        services.AddScoped<ProjectUserTools>();
         services.AddScoped<IProjectRoleService, ProjectRoleService>();
         services.AddScoped<ICompanyService, CompanyService>();
+        services.AddScoped<IProjectUserService, ProjectUserService>();
 
         services.AddSingleton<ICreationJobStatusService, CreationJobStatusService>();
         services.AddSingleton<ILinkingJobStatusService, LinkingJobStatusService>();

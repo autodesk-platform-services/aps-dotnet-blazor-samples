@@ -69,6 +69,41 @@ public class ToolCatalogService : IToolCatalogService
         }, sp => AIFunctionFactory.Create(sp.GetRequiredService<FolderTools>().CreateFolderStructureAsync)),
         (new ToolDescriptor
         {
+            ToolId = "search-hub-users",
+            DisplayName = "Search Hub Users",
+            Module = ToolModules.ProjectUsers,
+            Description = "Searches the users of the hub (ACC account) by name and/or email, matching partial text. Returns each user's name, email, status and company. The result only covers account members: it does not mean the user is in the current project."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().SearchHubUsersAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "find-project-users",
+            DisplayName = "Find Project Users",
+            Module = ToolModules.ProjectUsers,
+            Description = "Finds users in the current project by name and/or email. Returns each user's company, roles, access levels (account admin, project admin, executive) and the products they have access to. Use it to check whether a user is in the project and with what permissions."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().FindProjectUsersAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "list-project-roles-companies",
+            DisplayName = "List Project Roles and Companies",
+            Module = ToolModules.ProjectUsers,
+            Description = "Lists the roles and companies that can be assigned to users in the current project, with their names and IDs."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().ListProjectRolesAndCompaniesAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "add-project-user",
+            DisplayName = "Add Project User",
+            Module = ToolModules.ProjectUsers,
+            Description = "Adds a user to the current project by email, with a role and optionally a company and products (Docs as a member by default). Giving the projectAdministration product makes the user a project administrator. Needs project admin access for the agent's service account."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().AddUserToProjectAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "update-project-user",
+            DisplayName = "Update Project User",
+            Module = ToolModules.ProjectUsers,
+            Description = "Updates the role and/or company of a user in the current project, found by email. A new role replaces the user's current roles. Needs project admin access for the agent's service account."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().UpdateProjectUserAsync)),
+        (new ToolDescriptor
+        {
             ToolId = "link-modification",
             DisplayName = "Link Modification",
             Module = ToolModules.RevitAutomation,
