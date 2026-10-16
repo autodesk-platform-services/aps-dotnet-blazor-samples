@@ -703,8 +703,6 @@
     {
         if (_projectId == null || _userId == null || _selectedAgent == null) return;
 
-        await ChatService.SetAgentContextAsync(_selectedAgent.AgentId);
-
         _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId))
             .Where(c => c.AgentId == _selectedAgent.AgentId)
             .ToList();
@@ -804,7 +802,7 @@
 
         try
         {
-            await foreach (var token in ChatService.StreamResponseAsync(text, _streamingCts.Token))
+            await foreach (var token in ChatService.StreamResponseAsync(_selectedAgent?.AgentId ?? _conversation.AgentId, text, _streamingCts.Token))
             {
                 assistantMessage.Content += token;
                 await InvokeAsync(StateHasChanged);

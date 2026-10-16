@@ -13,7 +13,7 @@ public class AgentChatService : IAgentChatService
     private readonly IToolCatalogService _toolCatalog;
     private readonly BimManagerAssistantTools _bimManagerAssistantTools;
     private readonly IAgentConversationService _conversationService;
-    private AIAgent? _agent;
+    private readonly Dictionary<string, AIAgent> _agents = new();
     private string? _currentConversationId;
 
     public AgentChatService(
@@ -46,20 +46,8 @@ public class AgentChatService : IAgentChatService
         _currentConversationId = conversationId;
     }
 
-    public async Task SetAgentContextAsync(string agentId)
-    {
-        var def = await _agentRegistry.GetAgentAsync(agentId)
-            ?? throw new InvalidOperationException($"Agent '{agentId}' not found.");
-
-        _bimManagerAssistantTools.AgentId = agentId;
-
-        _agent = _chatClient.AsAIAgent(
-            instructions: def.InstructionsText,
-            name: def.AgentName,
-            tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
-    }
-
     public async IAsyncEnumerable<string> StreamResponseAsync(
+            string agentId,
             string userMessage,
             [EnumeratorCancellation] CancellationToken ct = default)
     {
@@ -68,13 +56,34 @@ public class AgentChatService : IAgentChatService
             throw new InvalidOperationException("SetConversationContext must be called before StreamResponseAsync.");
         }
 
-        if (_agent is null)
-        {
-            throw new InvalidOperationException("SetAgentContextAsync must be called before StreamResponseAsync.");
-        }
-
         var conversationId = _currentConversationId;
-        var agentId = _bimManagerAssistantTools.AgentId ?? string.Empty;
+        var conversation = await _conversationService.GetConversationAsync(conversationId)
+            ?? throw new InvalidOperationException($"Conversation '{conversationId}' not found.");
+
+        var def = await _agentRegistry.GetAgentAsync(agentId)
+            ?? throw new InvalidOperationException($"Assistant '{agentId}' not found.");
+
+        // Tools act on behalf of whichever assistant answers this turn.
+        _bimManagerAssistantTools.AgentId = agentId;
+        var agent = GetOrCreateAgent(def);
+
+        var names = new Dictionary<string, string>();
+        foreach (var projectAgent in await _agentRegistry.GetAgentsByProjectAsync(conversation.ProjectId))
+        {
+            names[projectAgent.AgentId] = projectAgent.AgentName;
+        }
+        names[def.AgentId] = def.AgentName;
+
+        string ResolveName(string? id) =>
+            id != null && names.TryGetValue(id, out var name) && !string.IsNullOrWhiteSpace(name) ? name : "Assistant";
+
+        var inputMessages = AssistantTranscript.BuildInput(
+            conversation.Messages.ToList(),
+            agentId,
+            conversation.AgentId,
+            ResolveName,
+            userMessage);
+
         var session = await _conversationService.GetOrLoadAgentSessionAsync(
             conversationId,
             agentId,
@@ -82,14 +91,14 @@ public class AgentChatService : IAgentChatService
             {
                 var persisted = await _conversationService.GetSerializedSessionAsync(conversationId, agentId);
                 return persisted.HasValue
-                    ? await _agent!.DeserializeSessionAsync(persisted.Value, cancellationToken: innerCt)
-                    : await _agent!.CreateSessionAsync(innerCt);
+                    ? await agent.DeserializeSessionAsync(persisted.Value, cancellationToken: innerCt)
+                    : await agent.CreateSessionAsync(innerCt);
             },
             ct);
 
         try
         {
-            await foreach (var update in _agent.RunStreamingAsync(userMessage, session, cancellationToken: ct))
+            await foreach (var update in agent.RunStreamingAsync(inputMessages, session, cancellationToken: ct))
             {
                 var text = update.Text;
                 if (!string.IsNullOrEmpty(text))
@@ -100,19 +109,28 @@ public class AgentChatService : IAgentChatService
         }
         finally
         {
-            var serialized = await _agent.SerializeSessionAsync(session, cancellationToken: CancellationToken.None);
+            var serialized = await agent.SerializeSessionAsync(session, cancellationToken: CancellationToken.None);
             await _conversationService.SaveSerializedSessionAsync(conversationId, agentId, serialized);
         }
     }
 
     public async Task ResetSessionAsync(string conversationId, CancellationToken ct = default)
     {
-        if (_agent is null)
-        {
-            throw new InvalidOperationException("SetAgentContextAsync must be called before ResetSessionAsync.");
-        }
-
         await _conversationService.ClearSerializedSessionAsync(conversationId);
         await _conversationService.RemoveAgentSessionAsync(conversationId);
+    }
+
+    private AIAgent GetOrCreateAgent(AgentDefinition def)
+    {
+        if (!_agents.TryGetValue(def.AgentId, out var agent))
+        {
+            agent = _chatClient.AsAIAgent(
+                instructions: def.InstructionsText,
+                name: def.AgentName,
+                tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
+            _agents[def.AgentId] = agent;
+        }
+
+        return agent;
     }
 }
