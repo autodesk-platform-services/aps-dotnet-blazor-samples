@@ -61,6 +61,8 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
 > **Note:** The AI Assistants feature requires a BIM Manager role on the selected project. This role requirement can be modified in the code (`ProjectRoleService`) to add additional roles. The LLM must support function calling for the assistant's tools to work properly.
 
+> **Note (Issues tools):** The ACC Issues API has no delete. To retire an issue, set its status to `closed` and tell the user that deleting it must be done in the ACC UI. Using Issues through an agent's service account needs a Forma Build subscription on that service account.
+
 ---
 
 ### Steps to build and run the sample locally

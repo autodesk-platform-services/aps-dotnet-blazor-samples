@@ -21,7 +21,8 @@ public class ToolCatalogServiceTests
         return new StubServiceProvider(
             new RevitModelTools(null!, null!, context, null!, null!, null!, null!, null!, null!),
             new FolderTools(null!, context),
-            new ProjectUserTools(null!, null!, null!, context));
+            new ProjectUserTools(null!, null!, null!, context),
+            new IssueTools(null!, null!, context));
     }
 
     private static readonly ToolCatalogService Catalog = new();
@@ -41,6 +42,12 @@ public class ToolCatalogServiceTests
         { "list-project-roles-companies", "ListProjectRolesAndCompanies" },
         { "add-project-user", "AddUserToProject" },
         { "update-project-user", "UpdateProjectUser" },
+        { "search-issues", "SearchIssues" },
+        { "get-issue", "GetIssue" },
+        { "list-issue-types", "ListIssueTypes" },
+        { "create-issue", "CreateIssue" },
+        { "update-issue", "UpdateIssue" },
+        { "add-issue-comment", "AddIssueComment" },
     };
 
     [Theory]
@@ -75,6 +82,19 @@ public class ToolCatalogServiceTests
     {
         var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
         Assert.Equal(ToolModules.ProjectUsers, tool.Module);
+    }
+
+    [Theory]
+    [InlineData("search-issues")]
+    [InlineData("get-issue")]
+    [InlineData("list-issue-types")]
+    [InlineData("create-issue")]
+    [InlineData("update-issue")]
+    [InlineData("add-issue-comment")]
+    public void IssueTools_AreListedUnderIssues(string toolId)
+    {
+        var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
+        Assert.Equal(ToolModules.Issues, tool.Module);
     }
 
     [Fact]

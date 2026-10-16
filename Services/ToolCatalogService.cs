@@ -104,6 +104,48 @@ public class ToolCatalogService : IToolCatalogService
         }, sp => AIFunctionFactory.Create(sp.GetRequiredService<ProjectUserTools>().UpdateProjectUserAsync)),
         (new ToolDescriptor
         {
+            ToolId = "search-issues",
+            DisplayName = "Search Issues",
+            Module = ToolModules.Issues,
+            Description = "Searches the issues of the current project by text, status and assignee. Returns each issue's ID, display ID, title, status, assignee and due date."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().SearchIssuesAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "get-issue",
+            DisplayName = "Get Issue",
+            Module = ToolModules.Issues,
+            Description = "Gets the full details of an issue in the current project, with its comments, so the agent can review it."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().GetIssueAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "list-issue-types",
+            DisplayName = "List Issue Types",
+            Module = ToolModules.Issues,
+            Description = "Lists the active issue types and subtypes of the current project, with their names and IDs."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().ListIssueTypesAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "create-issue",
+            DisplayName = "Create Issue",
+            Module = ToolModules.Issues,
+            Description = "Creates an issue in the current project with a title, subtype, and optionally a description, assignee (by project user email), due date and status (open by default)."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().CreateIssueAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "update-issue",
+            DisplayName = "Update Issue",
+            Module = ToolModules.Issues,
+            Description = "Updates the title, description, status, assignee or due date of an issue in the current project. The ACC Issues API has no delete: issues are retired by setting their status to closed, and deleting must be done in the ACC UI."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().UpdateIssueAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "add-issue-comment",
+            DisplayName = "Add Issue Comment",
+            Module = ToolModules.Issues,
+            Description = "Adds a comment to an issue in the current project."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().AddIssueCommentAsync)),
+        (new ToolDescriptor
+        {
             ToolId = "link-modification",
             DisplayName = "Link Modification",
             Module = ToolModules.RevitAutomation,
