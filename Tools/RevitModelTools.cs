@@ -21,7 +21,8 @@ public class RevitModelTools(
     IAgentTaskService taskService,
     IAPSAuthenticationService apsAuth,
     IHttpClientFactory httpClientFactory,
-    IConfiguration configuration)
+    IConfiguration configuration,
+    IAccLinkedFilesService linkedFilesService)
 {
     [Description("Lists the Revit (.rvt) models found in the current project's folders, recursively. Returns each model's name and item ID. Always show both the name and the item ID together to the user (e.g. \"Model: Architecture.rvt - Id: <itemId>\"), so the ID stays visible in the conversation for later turns (e.g. publishing one of the listed models).")]
     public async Task<List<RevitModelInfo>> ListRevitModelsAsync()
@@ -160,6 +161,62 @@ public class RevitModelTools(
         }
 
         return unpublished;
+    }
+
+    [Description("Lists the Revit models linked to a Revit model, based on the model's latest published version. Returns each linked model's name, item ID, version ID and publish status (names and IDs only, no file contents). Call ListRevitModelsAsync first to get the host model's item ID and name.")]
+    public async Task<string> GetLinkedRevitFilesAsync(
+        [Description("Item ID of the host Revit model, as returned by ListRevitModelsAsync")] string itemId,
+        [Description("Display name of the host model, used in the response")] string modelName)
+    {
+        string? versionId;
+        AccLinkedFilesResponse? response;
+        try
+        {
+            var projectId = context.RequireProjectId();
+            var accessToken = await context.GetAccessTokenAsync();
+
+            var tip = await dataManagementClient.GetItemTipAsync(
+                projectId: projectId,
+                itemId: itemId,
+                accessToken: accessToken);
+            versionId = tip?.Data?.Id;
+            if (string.IsNullOrEmpty(versionId))
+            {
+                return $"'{modelName}' has no version yet, so it has no published links to list.";
+            }
+
+            // The RCM API takes the project ID in the same form as the Data Management calls,
+            // as LinkMatrix does.
+            response = await linkedFilesService.GetLinkedFilesAsync(accessToken, projectId, versionId);
+        }
+        catch (Exception ex)
+        {
+            return ToolResults.Error($"get the linked files of '{modelName}'", ex);
+        }
+
+        if (response?.LinkedFiles is null)
+        {
+            return $"Could not get the linked files of '{modelName}'. The linked files API only covers models " +
+                "whose latest version was published after 2025-02-07, so the model may need to be published first.";
+        }
+
+        var linkedFiles = (response.LinkedFiles.Results ?? [])
+            .Select(f => new LinkedRevitFileInfo
+            {
+                ModelName = f.ModelName ?? string.Empty,
+                ItemId = f.ItemId ?? string.Empty,
+                VersionId = f.VersionId ?? string.Empty,
+                PublishStatus = f.PublishStatus
+            })
+            .ToList();
+
+        if (linkedFiles.Count == 0)
+        {
+            return $"'{modelName}' has no linked Revit models in its latest published version. Links are only " +
+                "reported for models published after 2025-02-07, and links the service account can't download are left out.";
+        }
+
+        return ToolResults.Json(linkedFiles);
     }
 
     private enum PublishJobStatus
@@ -394,4 +451,14 @@ public class RevitModelInfo
 {
     public string Name { get; set; } = string.Empty;
     public string ItemId { get; set; } = string.Empty;
+}
+
+// A model linked into a host Revit model. The RCM signed download URL is left out on purpose:
+// it expires after an hour, so it would go stale in the conversation.
+public class LinkedRevitFileInfo
+{
+    public string ModelName { get; set; } = string.Empty;
+    public string ItemId { get; set; } = string.Empty;
+    public string VersionId { get; set; } = string.Empty;
+    public string? PublishStatus { get; set; }
 }

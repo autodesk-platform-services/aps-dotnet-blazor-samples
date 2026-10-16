@@ -17,7 +17,7 @@ public class ToolCatalogServiceTests
 
     private static IServiceProvider NewServices() =>
         new StubServiceProvider(
-            new RevitModelTools(null!, null!, new AgentToolContext(null!, null!), null!, null!, null!, null!, null!));
+            new RevitModelTools(null!, null!, new AgentToolContext(null!, null!), null!, null!, null!, null!, null!, null!));
 
     private static readonly ToolCatalogService Catalog = new();
 
@@ -27,6 +27,7 @@ public class ToolCatalogServiceTests
         { "publish-revit-model", "PublishRevitModel" },
         { "check-model-publish-eligibility", "CheckModelPublishEligibility" },
         { "list-unpublished-models", "ListUnpublishedModels" },
+        { "get-linked-revit-files", "GetLinkedRevitFiles" },
     };
 
     [Theory]
@@ -34,6 +35,7 @@ public class ToolCatalogServiceTests
     [InlineData("publish-revit-model")]
     [InlineData("check-model-publish-eligibility")]
     [InlineData("list-unpublished-models")]
+    [InlineData("get-linked-revit-files")]
     public void ExistingRevitTools_AreListedUnderRevitModels(string toolId)
     {
         var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);

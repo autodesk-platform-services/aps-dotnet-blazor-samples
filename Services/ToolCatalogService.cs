@@ -41,6 +41,13 @@ public class ToolCatalogService : IToolCatalogService
         }, sp => AIFunctionFactory.Create(sp.GetRequiredService<RevitModelTools>().ListUnpublishedModelsAsync)),
         (new ToolDescriptor
         {
+            ToolId = "get-linked-revit-files",
+            DisplayName = "Get Linked Revit Files",
+            Module = ToolModules.RevitModels,
+            Description = "Lists the Revit models linked to a Revit model, based on the model's latest published version. Returns each linked model's name, item ID, version ID and publish status (names and IDs only, no file contents). Call ListRevitModelsAsync first to get the host model's item ID and name."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<RevitModelTools>().GetLinkedRevitFilesAsync)),
+        (new ToolDescriptor
+        {
             ToolId = "link-modification",
             DisplayName = "Link Modification",
             Module = ToolModules.RevitAutomation,
