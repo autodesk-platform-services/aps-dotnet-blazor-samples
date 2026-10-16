@@ -133,7 +133,8 @@ public class AgentTaskService : IAgentTaskService
                 {
                     Role = "assistant",
                     Content = $"⚠️ **{task.Name}** — timed out waiting for the publish to complete.",
-                    Timestamp = DateTime.UtcNow
+                    Timestamp = DateTime.UtcNow,
+                    AgentId = string.IsNullOrEmpty(task.AgentId) ? null : task.AgentId
                 });
             }
             catch (Exception ex)

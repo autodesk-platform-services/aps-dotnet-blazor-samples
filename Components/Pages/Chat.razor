@@ -1,4 +1,4 @@
-@page "/chat"
+@page "/assistants"
 @using ApsSamples.Models
 @using ApsSamples.Services
 @using Markdig
@@ -15,7 +15,7 @@
 @implements IAsyncDisposable
 @rendermode InteractiveServer
 
-<PageTitle>AI Assistants - @(_projectName ?? "Chat")</PageTitle>
+<PageTitle>Assistants - @(_projectName)</PageTitle>
 
 <style>
     .chat-message-bubble {
@@ -119,6 +119,13 @@
         flex-direction: row;
         align-items: flex-start;
         gap: 8px;
+    }
+
+    .chat-message-author {
+        font-size: 12px;
+        font-weight: 600;
+        color: var(--neutral-foreground-rest);
+        margin-bottom: 3px;
     }
 
     .chat-message-timestamp {
@@ -241,6 +248,22 @@
         margin-top: 2px;
     }
 
+    .conversation-agent {
+        display: block;
+        font-size: 11px;
+        color: var(--neutral-foreground-hint);
+        margin-top: 2px;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+    }
+
+    .chat-center-agent {
+        font-size: 12px;
+        color: var(--neutral-foreground-hint);
+        margin-top: 2px;
+    }
+
     .task-counts-row {
         display: flex;
         gap: 12px;
@@ -322,45 +345,16 @@
         {
             <span style="color: var(--neutral-foreground-hint); font-weight: 600;">@_projectName</span>
         }
-        @if (_agentLocked && _selectedAgent != null)
-        {
-            <span style="color: var(--neutral-foreground-hint);">Chatting with: <strong>@_selectedAgent.AgentName</strong></span>
-        }
     </div>
 
-    @if (_accessDenied)
+    @if (_noAgentsAccessible)
     {
         <FluentMessageBar Intent="MessageIntent.Warning">
-            Access denied. You do not have the BIM Manager role for this project.
+            No assistants are configured for your role. Contact your project admin.
         </FluentMessageBar>
     }
-    else if (_noAgentsAccessible)
-    {
-        <FluentMessageBar Intent="MessageIntent.Warning">
-            No agents are configured for your role. Contact your project admin.
-        </FluentMessageBar>
-    }
-    else if (!_agentLocked && _accessibleAgents.Count > 1)
-    {
-        <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 24px; max-width: 480px;">
-            <h3 style="margin: 0;">Select an assistant to start a conversation</h3>
-            <p style="color: var(--neutral-foreground-hint); margin: 0;">
-                Once started, this conversation is locked to the assistant you pick.
-            </p>
-            <FluentSelect TOption="AgentDefinition"
-                          Items="@_accessibleAgents"
-                          OptionText="@(a => $"{a.AgentName} ({a.RoleName})")"
-                          OptionValue="@(a => a.AgentId)"
-                          @bind-SelectedOption="_selectedAgent"
-                          Style="width: 100%;" />
-            <FluentButton Appearance="Appearance.Accent"
-                          Disabled="@(_selectedAgent == null)"
-                          OnClick="OnAgentSelectedAsync">
-                Start Conversation
-            </FluentButton>
-        </FluentStack>
-    }
-    else if (_conversation != null)
+
+    @if (_conversations.Count > 0 || _showNewConversationPicker)
     {
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="0" Class="chat-columns">
             <FluentStack Orientation="Orientation.Vertical"
@@ -373,7 +367,8 @@
                 <FluentButton Appearance="Appearance.Accent"
                               IconStart="@(new Icons.Regular.Size16.Add())"
                               Style="width: 100%;"
-                              OnClick="StartNewConversationAsync">
+                              Disabled="@(_accessibleAgents.Count == 0)"
+                              OnClick="ShowNewConversationPicker">
                     New conversation
                 </FluentButton>
                 <FluentSearch @bind-Value="_conversationSearch"
@@ -385,7 +380,7 @@
                     <p class="panel-group-label">@group.Label</p>
                     @foreach (var convo in group.Items)
                     {
-                        <div class="conversation-item @(convo.ConversationId == _conversation.ConversationId ? "conversation-item-active" : "")"
+                        <div class="conversation-item @(convo.ConversationId == _conversation?.ConversationId ? "conversation-item-active" : "")"
                              @onclick="@(() => SelectConversationAsync(convo))">
                             <div class="conversation-title-row">
                                 @if (HasActiveTask(convo.ConversationId))
@@ -394,6 +389,7 @@
                                 }
                                 <span class="conversation-title">@GetConversationTitle(convo)</span>
                             </div>
+                            <span class="conversation-agent">@GetAgentName(convo.AgentId, "Unavailable assistant")</span>
                             <div class="conversation-meta">
                                 <span>@TaskCount(convo.ConversationId) task@(TaskCount(convo.ConversationId) == 1 ? "" : "s")</span>
                                 <span>@convo.LastActivityAt.ToLocalTime().ToString("t")</span>
@@ -404,104 +400,159 @@
             </FluentStack>
 
             <div style="flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; height: 100%;">
-                <div class="chat-center-header">
-                    <h2 style="margin: 0;">@GetConversationTitle(_conversation)</h2>
-                    <FluentButton Appearance="Appearance.Lightweight" OnClick="ClearChatAsync">
-                        Clear chat
-                    </FluentButton>
-                </div>
-
-                <div style="flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
-                    @if (_conversation.Messages.Count == 0)
-                    {
-                        <p style="color: var(--neutral-foreground-hint); text-align: center; margin-top: 40px;">
-                            Start a conversation by typing a message below.
+                @if (_showNewConversationPicker || _conversation == null)
+                {
+                    <FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="padding: 24px; max-width: 480px;">
+                        <h3 style="margin: 0;">Select an assistant to start a conversation</h3>
+                        <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                            The assistant you pick answers this conversation. You can tag another assistant at any time with @@its name.
                         </p>
-                    }
-                    else
-                    {
-                        @foreach (var msg in _conversation.Messages)
-                        {
-                            var isUser = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase);
-                            var isSuccessNotice = !isUser && msg.Content.StartsWith("✅");
-                            var isFailureNotice = !isUser && msg.Content.StartsWith("⚠️");
-                            <div id="msg-@msg.Id" class="chat-message-row @(isUser ? "" : "chat-message-row-assistant")" style="align-items: @(isUser ? "flex-end" : "flex-start");">
-                                @if (!isUser)
-                                {
-                                    <div class="chat-avatar">A</div>
-                                }
-                                <div style="display: flex; flex-direction: column; align-items: @(isUser ? "flex-end" : "flex-start");">
-                                    @if (isSuccessNotice || isFailureNotice)
-                                    {
-                                        <div class="chat-notice-bubble @(isSuccessNotice ? "chat-notice-success" : "chat-notice-failure")">
-                                            @RenderMarkdown(msg.Content)
-                                        </div>
-                                    }
-                                    else
-                                    {
-                                        <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
-                                            @if (isUser)
-                                            {
-                                                @msg.Content
-                                            }
-                                            else
-                                            {
-                                                @RenderMarkdown(msg.Content)
-                                            }
-                                        </div>
-                                    }
-                                    <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
-                                </div>
-                            </div>
-                        }
-                    }
-                    <div @ref="_scrollAnchor"></div>
-                </div>
-
-                <div class="chat-quick-actions">
-                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
-                        Find unpublished models
-                    </span>
-                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
-                        List Revit models
-                    </span>
-                    @if (_agentTasks.Any(t => t.Status == AgentTaskStatus.Failed))
-                    {
-                        <span class="chat-quick-action-chip" @onclick="@(() => _taskStatusFilter = "Failed")">
-                            Show failed tasks
-                        </span>
-                    }
-                </div>
-
-                <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
-                    <FluentTextArea @ref="_inputTextArea"
-                                    @bind-Value="_inputText"
-                                    Immediate="true"
-                                    Placeholder="Ask about this project or request an action..."
-                                    Rows="3"
-                                    Style="width: 100%;"
-                                    Disabled="_isStreaming" />
-                    <FluentStack Orientation="Orientation.Horizontal"
-                                 HorizontalAlignment="HorizontalAlignment.SpaceBetween"
-                                 VerticalAlignment="VerticalAlignment.Center"
-                                 HorizontalGap="8"
-                                 Style="margin-top: 8px;">
-                        <span class="chat-input-hint">Enter to send &bull; Shift+Enter for new line</span>
-                        <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.SpaceBetween" HorizontalGap="8">
-                            @if (_isStreaming)
-                            {
-                                <FluentProgressRing Style="width: 20px; height: 20px;" />
-                                <span style="color: var(--neutral-foreground-hint);">Responding...</span>
-                            }
+                        <FluentSelect TOption="AgentDefinition"
+                                      Items="@_accessibleAgents"
+                                      OptionText="@(a => $"{a.AgentName} ({a.RoleName})")"
+                                      OptionValue="@(a => a.AgentId)"
+                                      @bind-SelectedOption="_newConversationAgent"
+                                      Style="width: 100%;" />
+                        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8">
                             <FluentButton Appearance="Appearance.Accent"
-                                          IconStart="@(new Icons.Regular.Size16.Send())"
-                                          OnClick="SendMessage"
-                                          Disabled="@(_isStreaming || string.IsNullOrWhiteSpace(_inputText))">
-                                Send
+                                          Disabled="@(_newConversationAgent == null)"
+                                          OnClick="StartNewConversationAsync">
+                                Start conversation
                             </FluentButton>
+                            @if (_conversation != null)
+                            {
+                                <FluentButton Appearance="Appearance.Lightweight" OnClick="CancelNewConversation">
+                                    Cancel
+                                </FluentButton>
+                            }
                         </FluentStack>
                     </FluentStack>
-                </div>
+                }
+                else
+                {
+                    <div class="chat-center-header">
+                        <div style="min-width: 0;">
+                            <h2 style="margin: 0;">@GetConversationTitle(_conversation)</h2>
+                            <div class="chat-center-agent">@GetAgentName(_conversation.AgentId, "Unavailable assistant")</div>
+                        </div>
+                        <FluentButton Appearance="Appearance.Lightweight" OnClick="ClearChatAsync">
+                            Clear chat
+                        </FluentButton>
+                    </div>
+
+                    <div style="flex: 1 1 auto; overflow-y: auto; padding: 12px; display: flex; flex-direction: column;">
+                        @if (_conversation.Messages.Count == 0)
+                        {
+                            <p style="color: var(--neutral-foreground-hint); text-align: center; margin-top: 40px;">
+                                Start a conversation by typing a message below.
+                            </p>
+                        }
+                        else
+                        {
+                            @foreach (var msg in _conversation.Messages)
+                            {
+                                var isUser = string.Equals(msg.Role, "user", StringComparison.OrdinalIgnoreCase);
+                                var isSuccessNotice = !isUser && msg.Content.StartsWith("✅");
+                                var isFailureNotice = !isUser && msg.Content.StartsWith("⚠️");
+                                var authorName = isUser ? string.Empty : GetMessageAuthorName(msg);
+                                <div id="msg-@msg.Id" class="chat-message-row @(isUser ? "" : "chat-message-row-assistant")" style="align-items: @(isUser ? "flex-end" : "flex-start");">
+                                    @if (!isUser)
+                                    {
+                                        <div class="chat-avatar" title="@authorName">@GetInitials(authorName)</div>
+                                    }
+                                    <div style="display: flex; flex-direction: column; align-items: @(isUser ? "flex-end" : "flex-start");">
+                                        @if (!isUser)
+                                        {
+                                            <div class="chat-message-author">@authorName</div>
+                                        }
+                                        @if (isSuccessNotice || isFailureNotice)
+                                        {
+                                            <div class="chat-notice-bubble @(isSuccessNotice ? "chat-notice-success" : "chat-notice-failure")">
+                                                @RenderMarkdown(msg.Content)
+                                            </div>
+                                        }
+                                        else
+                                        {
+                                            <div class="chat-message-bubble @(isUser ? "chat-user-bubble" : "chat-assistant-bubble")">
+                                                @if (isUser)
+                                                {
+                                                    @msg.Content
+                                                }
+                                                else
+                                                {
+                                                    @RenderMarkdown(msg.Content)
+                                                }
+                                            </div>
+                                        }
+                                        <div class="chat-message-timestamp">@msg.Timestamp.ToLocalTime().ToString("t")</div>
+                                    </div>
+                                </div>
+                            }
+                        }
+                        <div @ref="_scrollAnchor"></div>
+                    </div>
+
+                    <div class="chat-quick-actions">
+                        @if (ReadOnlyReason == null)
+                        {
+                            <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
+                                Find unpublished models
+                            </span>
+                            <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
+                                List Revit models
+                            </span>
+                            @foreach (var agent in MentionableAgents)
+                            {
+                                var handle = AssistantMentions.ToHandle(agent.AgentName);
+                                <span class="chat-quick-action-chip" title="Tag @agent.AgentName" @onclick="@(() => InsertMention(handle))">
+                                    @@@handle
+                                </span>
+                            }
+                        }
+                        @if (_agentTasks.Any(t => t.Status == AgentTaskStatus.Failed))
+                        {
+                            <span class="chat-quick-action-chip" @onclick="@(() => _taskStatusFilter = "Failed")">
+                                Show failed tasks
+                            </span>
+                        }
+                    </div>
+
+                    <div style="padding: 12px; border-top: 1px solid var(--neutral-stroke-rest);">
+                        @if (ReadOnlyReason != null)
+                        {
+                            <FluentMessageBar Intent="MessageIntent.Info" AllowDismiss="false" Style="margin-bottom: 8px;">
+                                @ReadOnlyReason
+                            </FluentMessageBar>
+                        }
+                        <FluentTextArea @ref="_inputTextArea"
+                                        @bind-Value="_inputText"
+                                        Immediate="true"
+                                        Placeholder="Ask about this project or request an action..."
+                                        Rows="3"
+                                        Style="width: 100%;"
+                                        Disabled="@(_isStreaming || ReadOnlyReason != null)" />
+                        <FluentStack Orientation="Orientation.Horizontal"
+                                     HorizontalAlignment="HorizontalAlignment.SpaceBetween"
+                                     VerticalAlignment="VerticalAlignment.Center"
+                                     HorizontalGap="8"
+                                     Style="margin-top: 8px;">
+                            <span class="chat-input-hint">Enter to send &bull; Shift+Enter for new line &bull; Type @@assistant to tag another assistant</span>
+                            <FluentStack Orientation="Orientation.Horizontal" VerticalAlignment="VerticalAlignment.SpaceBetween" HorizontalGap="8">
+                                @if (_isStreaming)
+                                {
+                                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                                    <span style="color: var(--neutral-foreground-hint);">Responding...</span>
+                                }
+                                <FluentButton Appearance="Appearance.Accent"
+                                              IconStart="@(new Icons.Regular.Size16.Send())"
+                                              OnClick="SendMessage"
+                                              Disabled="@(_isStreaming || ReadOnlyReason != null || string.IsNullOrWhiteSpace(_inputText))">
+                                    Send
+                                </FluentButton>
+                            </FluentStack>
+                        </FluentStack>
+                    </div>
+                }
             </div>
 
             <FluentStack Orientation="Orientation.Vertical"
@@ -584,12 +635,12 @@
 
     private string? _projectId;
     private string? _projectName;
-    private bool _accessDenied;
     private string? _userId;
+    private Dictionary<string, AgentDefinition> _agentsById = new();
     private List<AgentDefinition> _accessibleAgents = new();
-    private AgentDefinition? _selectedAgent;
-    private bool _agentLocked;
     private bool _noAgentsAccessible;
+    private bool _showNewConversationPicker;
+    private AgentDefinition? _newConversationAgent;
     private ConversationSession? _conversation;
     private List<ConversationSession> _conversations = new();
     private IReadOnlyList<AgentTaskInfo> _agentTasks = Array.Empty<AgentTaskInfo>();
@@ -605,12 +656,27 @@
     private IJSObjectReference? _jsModule;
     private FluentTextArea? _inputTextArea;
     private DotNetObjectReference<Chat>? _dotNetRef;
+    private string? _enterToSendElementId;
 
     private IReadOnlyList<ConversationSession> FilteredConversations => string.IsNullOrWhiteSpace(_conversationSearch)
         ? _conversations
         : _conversations
-            .Where(c => GetConversationTitle(c).Contains(_conversationSearch, StringComparison.OrdinalIgnoreCase))
+            .Where(c => GetConversationTitle(c).Contains(_conversationSearch, StringComparison.OrdinalIgnoreCase)
+                || GetAgentName(c.AgentId, "Unavailable assistant").Contains(_conversationSearch, StringComparison.OrdinalIgnoreCase))
             .ToList();
+
+    // Why the open conversation can no longer be continued, or null when the user can still chat in it.
+    private string? ReadOnlyReason => _conversation == null
+        ? null
+        : !_agentsById.ContainsKey(_conversation.AgentId)
+            ? "The assistant is not available anymore"
+            : _accessibleAgents.All(a => a.AgentId != _conversation.AgentId)
+                ? "You don't have this role anymore"
+                : null;
+
+    // Accessible assistants other than the open conversation's own, offered as @mention chips.
+    private IEnumerable<AgentDefinition> MentionableAgents =>
+        _accessibleAgents.Where(a => a.AgentId != _conversation?.AgentId);
 
     private IReadOnlyList<AgentTaskInfo> FilteredTasks => _taskFilterConversationId == null
         ? _agentTasks
@@ -645,14 +711,7 @@
         var accessToken = UserSession.AccessToken ?? string.Empty;
         var accountAdminUserId = UserSession.UserId ?? string.Empty;
 
-        var isBimManager = await RoleService.IsBimManagerAsync(_projectId, accountAdminUserId, accessToken);
-        if (!isBimManager)
-        {
-            _accessDenied = true;
-            return;
-        }
-
-        // Give the agent's tools the project this page is scoped to, so the LLM never has to
+        // Give the assistants' tools the project this page is scoped to, so the LLM never has to
         // supply (or guess) a project ID itself.
         ChatService.SetProjectContext(_projectId);
         ChatService.SetHubContext(selected.HubId);
@@ -662,64 +721,42 @@
         _userId = UserSession.UserEmail ?? UserSession.UserName ?? "unknown";
 
         var allAgents = await AgentRegistryService.GetAgentsByProjectAsync(_projectId);
+        _agentsById = allAgents
+            .GroupBy(a => a.AgentId)
+            .ToDictionary(g => g.Key, g => g.First());
         _accessibleAgents = allAgents
             .Where(a => userRoles.Any(r => string.Equals(r, a.RoleName, StringComparison.OrdinalIgnoreCase)))
             .ToList();
+        _noAgentsAccessible = _accessibleAgents.Count == 0;
+        _newConversationAgent = _accessibleAgents.FirstOrDefault();
 
-        if (_accessibleAgents.Count == 0)
+        // Every conversation of the user in this project, whichever assistant it was started with.
+        // Conversations whose assistant is gone or no longer reachable stay listed (read-only).
+        _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId)).ToList();
+
+        if (_conversations.Count > 0)
         {
-            _noAgentsAccessible = true;
-            return;
+            await SelectConversationAsync(_conversations[0]);
+        }
+        else if (_accessibleAgents.Count == 1)
+        {
+            // Only one assistant to talk to: skip the picker and start right away.
+            await CreateConversationAsync(_accessibleAgents[0]);
+        }
+        else if (_accessibleAgents.Count > 1)
+        {
+            _showNewConversationPicker = true;
         }
 
-        if (_accessibleAgents.Count == 1)
+        if (_conversations.Count > 0 || _showNewConversationPicker)
         {
-            _selectedAgent = _accessibleAgents[0];
-            await StartConversationForSelectedAgentAsync();
-            return;
+            _agentTasks = await TaskService.GetTasksByProjectAsync(_projectId);
+            EnsurePolling();
         }
-
-        // Multiple accessible agents: if the user already has a conversation with one of them,
-        // resume the most recent conversation and lock to that agent so the selector never shows.
-        var existing = new List<ConversationSession>();
-        foreach (var agent in _accessibleAgents)
-        {
-            existing.AddRange(await ConversationService.GetConversationsAsync(_projectId, _userId, agent.AgentId));
-        }
-
-        var mostRecent = existing.OrderByDescending(c => c.LastActivityAt).FirstOrDefault();
-        if (mostRecent != null)
-        {
-            _selectedAgent = _accessibleAgents.FirstOrDefault(a => a.AgentId == mostRecent.AgentId);
-            if (_selectedAgent != null)
-            {
-                await StartConversationForSelectedAgentAsync();
-                return;
-            }
-        }
-
-        // Otherwise wait for OnAgentSelectedAsync via the selector UI.
     }
 
-    private async Task StartConversationForSelectedAgentAsync()
+    private void EnsurePolling()
     {
-        if (_projectId == null || _userId == null || _selectedAgent == null) return;
-
-        await ChatService.SetAgentContextAsync(_selectedAgent.AgentId);
-
-        _conversations = (await ConversationService.GetConversationsAsync(_projectId, _userId, _selectedAgent.AgentId)).ToList();
-        if (_conversations.Count == 0)
-        {
-            _conversations.Add(await ConversationService.CreateConversationAsync(_projectId, _userId, _selectedAgent.AgentId));
-        }
-
-        _conversation = _conversations[0];
-        ChatService.SetConversationContext(_conversation.ConversationId);
-        _taskFilterConversationId = _conversation.ConversationId;
-        _agentLocked = true;
-
-        _agentTasks = await TaskService.GetTasksByProjectAsync(_projectId);
-
         _pollingTimer ??= new System.Threading.Timer(async _ =>
         {
             if (_disposed || _projectId == null) return;
@@ -737,13 +774,6 @@
         }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
     }
 
-    private async Task OnAgentSelectedAsync()
-    {
-        if (_selectedAgent == null) return;
-        await StartConversationForSelectedAgentAsync();
-        await InvokeAsync(StateHasChanged);
-    }
-
     protected override async Task OnAfterRenderAsync(bool firstRender)
     {
         if (firstRender)
@@ -751,16 +781,19 @@
             _jsModule = await JS.InvokeAsync<IJSObjectReference>("import",
                 "./Components/Pages/Chat.razor.js");
 
-            if (_inputTextArea != null)
-            {
-                _dotNetRef = DotNetObjectReference.Create(this);
-                await _jsModule.InvokeVoidAsync("setupEnterToSend", _inputTextArea.Element, _dotNetRef);
-            }
-
             if (_conversation != null && _conversation.Messages.Count > 0)
             {
                 await ScrollToBottomAsync();
             }
+        }
+
+        // The input is not rendered while the assistant picker is shown, and is re-created when the
+        // picker closes, so (re)attach Enter-to-send whenever a new input element appears.
+        if (_jsModule != null && _inputTextArea != null && _inputTextArea.Element.Id != _enterToSendElementId)
+        {
+            _dotNetRef ??= DotNetObjectReference.Create(this);
+            _enterToSendElementId = _inputTextArea.Element.Id;
+            await _jsModule.InvokeVoidAsync("setupEnterToSend", _inputTextArea.Element, _dotNetRef);
         }
     }
 
@@ -772,11 +805,19 @@
 
     private async Task SendMessage()
     {
-        if (_conversation == null || _isStreaming || string.IsNullOrWhiteSpace(_inputText))
+        if (_conversation == null || _isStreaming || string.IsNullOrWhiteSpace(_inputText) || ReadOnlyReason != null)
             return;
+
+        var conversation = _conversation;
+        var primary = _accessibleAgents.FirstOrDefault(a => a.AgentId == conversation.AgentId);
+        if (primary == null) return;
 
         var text = _inputText.Trim();
         _inputText = string.Empty;
+
+        // An @mention of another reachable assistant hands this turn to it; otherwise the
+        // conversation's own assistant answers.
+        var answering = AssistantMentions.FindMentioned(text, _accessibleAgents) ?? primary;
 
         var userMessage = new ConversationMessage
         {
@@ -784,16 +825,18 @@
             Content = text,
             Timestamp = DateTime.UtcNow
         };
-        _conversation.Messages.Add(userMessage);
-        await ConversationService.AddMessageAsync(_conversation.ConversationId, userMessage);
+        conversation.Messages.Add(userMessage);
+        await ConversationService.AddMessageAsync(conversation.ConversationId, userMessage);
 
         var assistantMessage = new ConversationMessage
         {
             Role = "assistant",
             Content = string.Empty,
-            Timestamp = DateTime.UtcNow
+            Timestamp = DateTime.UtcNow,
+            AgentId = answering.AgentId,
+            AgentName = answering.AgentName
         };
-        _conversation.Messages.Add(assistantMessage);
+        conversation.Messages.Add(assistantMessage);
 
         _isStreaming = true;
         await InvokeAsync(StateHasChanged);
@@ -804,7 +847,7 @@
 
         try
         {
-            await foreach (var token in ChatService.StreamResponseAsync(text, _streamingCts.Token))
+            await foreach (var token in ChatService.StreamResponseAsync(answering.AgentId, text, _streamingCts.Token))
             {
                 assistantMessage.Content += token;
                 await InvokeAsync(StateHasChanged);
@@ -819,7 +862,7 @@
         finally
         {
             assistantMessage.Timestamp = DateTime.UtcNow;
-            await ConversationService.AddMessageAsync(_conversation.ConversationId, assistantMessage);
+            await ConversationService.AddMessageAsync(conversation.ConversationId, assistantMessage);
             _conversations = _conversations.OrderByDescending(c => c.LastActivityAt).ToList();
             _isStreaming = false;
             await InvokeAsync(StateHasChanged);
@@ -827,17 +870,38 @@
         }
     }
 
+    private void ShowNewConversationPicker()
+    {
+        if (_accessibleAgents.Count == 0) return;
+
+        _newConversationAgent ??= _accessibleAgents[0];
+        _showNewConversationPicker = true;
+    }
+
+    private void CancelNewConversation()
+    {
+        _showNewConversationPicker = false;
+    }
+
     private async Task StartNewConversationAsync()
     {
-        if (_projectId == null || _userId == null || _selectedAgent == null) return;
+        if (_newConversationAgent == null) return;
 
-        var created = await ConversationService.CreateConversationAsync(_projectId, _userId, _selectedAgent.AgentId);
+        await CreateConversationAsync(_newConversationAgent);
+    }
+
+    private async Task CreateConversationAsync(AgentDefinition agent)
+    {
+        if (_projectId == null || _userId == null) return;
+
+        var created = await ConversationService.CreateConversationAsync(_projectId, _userId, agent.AgentId);
         _conversations.Insert(0, created);
         await SelectConversationAsync(created);
     }
 
     private async Task SelectConversationAsync(ConversationSession convo)
     {
+        _showNewConversationPicker = false;
         _conversation = convo;
         _taskFilterConversationId = convo.ConversationId;
         ChatService.SetConversationContext(convo.ConversationId);
@@ -859,6 +923,12 @@
         _inputText = text;
     }
 
+    private void InsertMention(string handle)
+    {
+        var separator = _inputText.Length == 0 || char.IsWhiteSpace(_inputText[^1]) ? string.Empty : " ";
+        _inputText = $"{_inputText}{separator}@{handle} ";
+    }
+
     private void ClearTaskFilter()
     {
         _taskFilterConversationId = null;
@@ -869,6 +939,7 @@
         var convo = _conversations.FirstOrDefault(c => c.ConversationId == task.ConversationId);
         if (convo != null && convo != _conversation)
         {
+            _showNewConversationPicker = false;
             _conversation = convo;
             ChatService.SetConversationContext(convo.ConversationId);
         }
@@ -897,6 +968,32 @@
 
         var text = firstUserMessage.Content.Trim();
         return text.Length > 40 ? text[..40] + "…" : text;
+    }
+
+    private string GetAgentName(string? agentId, string fallback = "Assistant") =>
+        agentId != null && _agentsById.TryGetValue(agentId, out var agent) && !string.IsNullOrWhiteSpace(agent.AgentName)
+            ? agent.AgentName
+            : fallback;
+
+    // Live replies carry a name snapshot; older messages and notices fall back to the stamped
+    // assistant id, then to the conversation's own assistant.
+    private string GetMessageAuthorName(ConversationMessage message)
+    {
+        if (!string.IsNullOrWhiteSpace(message.AgentName)) return message.AgentName;
+
+        var agentId = string.IsNullOrEmpty(message.AgentId) ? _conversation?.AgentId : message.AgentId;
+        return GetAgentName(agentId);
+    }
+
+    private static string GetInitials(string name)
+    {
+        var initials = name
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Take(2)
+            .Select(word => char.ToUpperInvariant(word[0]))
+            .ToArray();
+
+        return initials.Length == 0 ? "A" : new string(initials);
     }
 
     private int TaskCount(string conversationId) =>
