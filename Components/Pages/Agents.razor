@@ -197,23 +197,27 @@
                                           Style="width: 100%; margin-bottom: 12px; flex-shrink: 0;" />
                         <div style="flex: 1; overflow-y: auto;">
                             <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
-                                @foreach (var tool in FilteredTools)
+                                @foreach (var group in FilteredToolGroups)
                                 {
-                                    <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
-                                        <FluentCheckbox Label="@tool.DisplayName"
-                                                        Value="@_selectedToolIds.Contains(tool.ToolId)"
-                                                        ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
-                                        <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
-                                              @onclick="@(() => ToggleDetails(tool.ToolId))">
-                                            @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
-                                        </span>
-                                        @if (_expandedToolIds.Contains(tool.ToolId))
-                                        {
-                                            <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
-                                                @tool.Description
-                                            </div>
-                                        }
-                                    </div>
+                                    <h4 style="margin: 4px 0 0 0;">@group.Key</h4>
+                                    @foreach (var tool in group)
+                                    {
+                                        <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
+                                            <FluentCheckbox Label="@tool.DisplayName"
+                                                            Value="@_selectedToolIds.Contains(tool.ToolId)"
+                                                            ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
+                                            <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
+                                                  @onclick="@(() => ToggleDetails(tool.ToolId))">
+                                                @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
+                                            </span>
+                                            @if (_expandedToolIds.Contains(tool.ToolId))
+                                            {
+                                                <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
+                                                    @tool.Description
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 }
                                 @if (!FilteredTools.Any())
                                 {
@@ -315,6 +319,10 @@
             : _allTools.Where(t =>
                 t.DisplayName.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase)
                 || t.Description.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase));
+
+    // GroupBy keeps groups in order of first appearance, so modules follow the catalog order.
+    private IEnumerable<IGrouping<string, ToolDescriptor>> FilteredToolGroups =>
+        FilteredTools.GroupBy(t => string.IsNullOrWhiteSpace(t.Module) ? "Other" : t.Module);
 
     protected override async Task OnInitializedAsync()
     {
