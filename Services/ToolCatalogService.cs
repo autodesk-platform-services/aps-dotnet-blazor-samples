@@ -48,6 +48,27 @@ public class ToolCatalogService : IToolCatalogService
         }, sp => AIFunctionFactory.Create(sp.GetRequiredService<RevitModelTools>().GetLinkedRevitFilesAsync)),
         (new ToolDescriptor
         {
+            ToolId = "list-folders",
+            DisplayName = "List Folders",
+            Module = ToolModules.Folders,
+            Description = "Lists the subfolders of a folder in the current project. Without a parent folder ID it lists the folders under \"Project Files\". Returns the parent folder's ID and name and each subfolder's ID and name. Use it to find the folder ID to pass to the other folder tools."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<FolderTools>().ListFoldersAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "create-folder",
+            DisplayName = "Create Folder",
+            Module = ToolModules.Folders,
+            Description = "Creates one folder in the current project, under \"Project Files\" unless a parent folder ID is given. If a folder with that name already exists under the parent, it is returned instead of creating a duplicate. Returns the folder's ID and name and whether it was created. To create several folders or nested folders at once, use CreateFolderStructure instead."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<FolderTools>().CreateFolderAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "create-folder-structure",
+            DisplayName = "Create Folder Structure",
+            Module = ToolModules.Folders,
+            Description = "Creates a folder structure in the current project from a list of folder paths, under \"Project Files\" unless a parent folder ID is given. Each path uses \"/\" between levels, for example \"01 WIP/Architecture\". Existing folders are reused (matched by name, ignoring case), so running it again creates nothing new. Returns, per path, the deepest folder's ID, the segments that were created and the ones that already existed, or the error for that path."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<FolderTools>().CreateFolderStructureAsync)),
+        (new ToolDescriptor
+        {
             ToolId = "link-modification",
             DisplayName = "Link Modification",
             Module = ToolModules.RevitAutomation,

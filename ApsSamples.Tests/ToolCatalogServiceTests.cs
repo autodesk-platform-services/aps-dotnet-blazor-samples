@@ -15,9 +15,13 @@ public class ToolCatalogServiceTests
             services.FirstOrDefault(serviceType.IsInstanceOfType);
     }
 
-    private static IServiceProvider NewServices() =>
-        new StubServiceProvider(
-            new RevitModelTools(null!, null!, new AgentToolContext(null!, null!), null!, null!, null!, null!, null!, null!));
+    private static IServiceProvider NewServices()
+    {
+        var context = new AgentToolContext(null!, null!);
+        return new StubServiceProvider(
+            new RevitModelTools(null!, null!, context, null!, null!, null!, null!, null!, null!),
+            new FolderTools(null!, context));
+    }
 
     private static readonly ToolCatalogService Catalog = new();
 
@@ -28,6 +32,9 @@ public class ToolCatalogServiceTests
         { "check-model-publish-eligibility", "CheckModelPublishEligibility" },
         { "list-unpublished-models", "ListUnpublishedModels" },
         { "get-linked-revit-files", "GetLinkedRevitFiles" },
+        { "list-folders", "ListFolders" },
+        { "create-folder", "CreateFolder" },
+        { "create-folder-structure", "CreateFolderStructure" },
     };
 
     [Theory]
@@ -40,6 +47,16 @@ public class ToolCatalogServiceTests
     {
         var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
         Assert.Equal(ToolModules.RevitModels, tool.Module);
+    }
+
+    [Theory]
+    [InlineData("list-folders")]
+    [InlineData("create-folder")]
+    [InlineData("create-folder-structure")]
+    public void FolderTools_AreListedUnderFolders(string toolId)
+    {
+        var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
+        Assert.Equal(ToolModules.Folders, tool.Module);
     }
 
     [Fact]
