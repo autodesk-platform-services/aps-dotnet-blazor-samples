@@ -328,13 +328,7 @@
         }
     </div>
 
-    @if (_accessDenied)
-    {
-        <FluentMessageBar Intent="MessageIntent.Warning">
-            Access denied. You do not have the BIM Manager role for this project.
-        </FluentMessageBar>
-    }
-    else if (_noAgentsAccessible)
+    @if (_noAgentsAccessible)
     {
         <FluentMessageBar Intent="MessageIntent.Warning">
             No agents are configured for your role. Contact your project admin.
@@ -459,12 +453,30 @@
                 </div>
 
                 <div class="chat-quick-actions">
-                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
-                        Find unpublished models
-                    </span>
-                    <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
-                        List Revit models
-                    </span>
+                    @if (AgentHasTool("list-unpublished-models"))
+                    {
+                        <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
+                            Find unpublished models
+                        </span>
+                    }
+                    @if (AgentHasTool("list-revit-models"))
+                    {
+                        <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
+                            List Revit models
+                        </span>
+                    }
+                    @if (AgentHasTool("search-issues"))
+                    {
+                        <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the open issues in this project"))'>
+                            Show open issues
+                        </span>
+                    }
+                    @if (AgentHasTool("find-project-users"))
+                    {
+                        <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("Check whether a user is in this project"))'>
+                            Find a project user
+                        </span>
+                    }
                     @if (_agentTasks.Any(t => t.Status == AgentTaskStatus.Failed))
                     {
                         <span class="chat-quick-action-chip" @onclick="@(() => _taskStatusFilter = "Failed")">
@@ -584,7 +596,6 @@
 
     private string? _projectId;
     private string? _projectName;
-    private bool _accessDenied;
     private string? _userId;
     private List<AgentDefinition> _accessibleAgents = new();
     private AgentDefinition? _selectedAgent;
@@ -644,13 +655,6 @@
 
         var accessToken = UserSession.AccessToken ?? string.Empty;
         var accountAdminUserId = UserSession.UserId ?? string.Empty;
-
-        var isBimManager = await RoleService.IsBimManagerAsync(_projectId, accountAdminUserId, accessToken);
-        if (!isBimManager)
-        {
-            _accessDenied = true;
-            return;
-        }
 
         // Give the agent's tools the project this page is scoped to, so the LLM never has to
         // supply (or guess) a project ID itself.
@@ -858,6 +862,9 @@
     {
         _inputText = text;
     }
+
+    private bool AgentHasTool(string toolId) =>
+        _selectedAgent?.EnabledToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase) == true;
 
     private void ClearTaskFilter()
     {

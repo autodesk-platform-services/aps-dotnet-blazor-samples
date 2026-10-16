@@ -11,7 +11,8 @@ public class AgentChatService : IAgentChatService
     private readonly IChatClient _chatClient;
     private readonly IAgentRegistryService _agentRegistry;
     private readonly IToolCatalogService _toolCatalog;
-    private readonly BimManagerAssistantTools _bimManagerAssistantTools;
+    private readonly AgentToolContext _toolContext;
+    private readonly IServiceProvider _services;
     private readonly IAgentConversationService _conversationService;
     private AIAgent? _agent;
     private string? _currentConversationId;
@@ -20,29 +21,31 @@ public class AgentChatService : IAgentChatService
         IChatClient chatClient,
         IAgentRegistryService agentRegistry,
         IToolCatalogService toolCatalog,
-        BimManagerAssistantTools bimManagerAssistantTools,
+        AgentToolContext toolContext,
+        IServiceProvider services,
         IAgentConversationService conversationService)
     {
         _chatClient = chatClient;
         _agentRegistry = agentRegistry;
         _toolCatalog = toolCatalog;
-        _bimManagerAssistantTools = bimManagerAssistantTools;
+        _toolContext = toolContext;
+        _services = services;
         _conversationService = conversationService;
     }
 
     public void SetHubContext(string hubId)
     {
-        _bimManagerAssistantTools.HubId = hubId;
+        _toolContext.HubId = hubId;
     }
 
     public void SetProjectContext(string projectId)
     {
-        _bimManagerAssistantTools.ProjectId = projectId;
+        _toolContext.ProjectId = projectId;
     }
 
     public void SetConversationContext(string conversationId)
     {
-        _bimManagerAssistantTools.ConversationId = conversationId;
+        _toolContext.ConversationId = conversationId;
         _currentConversationId = conversationId;
     }
 
@@ -51,12 +54,15 @@ public class AgentChatService : IAgentChatService
         var def = await _agentRegistry.GetAgentAsync(agentId)
             ?? throw new InvalidOperationException($"Agent '{agentId}' not found.");
 
-        _bimManagerAssistantTools.AgentId = agentId;
+        _toolContext.AgentId = agentId;
+        _toolContext.SsaId = def.SsaId;
 
+        // _services is this circuit's scoped provider (AgentChatService is scoped), so the tool
+        // classes the catalog resolves share the same AgentToolContext instance.
         _agent = _chatClient.AsAIAgent(
             instructions: def.InstructionsText,
             name: def.AgentName,
-            tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
+            tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _services).Cast<AITool>().ToArray());
     }
 
     public async IAsyncEnumerable<string> StreamResponseAsync(
