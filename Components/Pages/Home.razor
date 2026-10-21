@@ -2,6 +2,8 @@
 @using ApsSamples.Services
 @using Microsoft.FluentUI.AspNetCore.Components
 @inject IUserSessionService UserSession
+@inject ISelectedProjectService SelectedProjectService
+@inject IProjectRoleService RoleService
 @inject NavigationManager NavigationManager
 
 <PageTitle>Home</PageTitle>
@@ -82,36 +84,53 @@
                 </p>
                 <FluentButton Appearance="Appearance.Accent"
                              IconStart="@(new Icons.Regular.Size20.ChatMultiple())"
-                             OnClick="@(() => NavigationManager.NavigateTo("/chat"))">
+                             OnClick="@(() => NavigationManager.NavigateTo("/assistants"))">
                     Assistants
                 </FluentButton>
             </FluentStack>
         </FluentCard>
 
-        <FluentCard Style="max-width: 400px; padding: 24px;">
-            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                <FluentIcon Value="@(new Icons.Regular.Size48.Bot())" Color="Color.Accent" />
-                <h3>Agents</h3>
-                <p style="color: var(--neutral-foreground-hint);">
-                    Configure and manage AI Agents for your projects.
-                </p>
-                <FluentButton Appearance="Appearance.Accent"
-                             IconStart="@(new Icons.Regular.Size20.Bot())"
-                             OnClick="@(() => NavigationManager.NavigateTo("/agents"))">
-                    Agents
-                </FluentButton>
-            </FluentStack>
-        </FluentCard>
+        @if (_isAdmin)
+        {
+            <FluentCard Style="max-width: 400px; padding: 24px;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.Settings())" Color="Color.Accent" />
+                    <h3>Settings</h3>
+                    <p style="color: var(--neutral-foreground-hint);">
+                        Configure the AI assistants for your project.
+                    </p>
+                    <FluentButton Appearance="Appearance.Accent"
+                                 IconStart="@(new Icons.Regular.Size20.Settings())"
+                                 OnClick="@(() => NavigationManager.NavigateTo("/settings"))">
+                        Settings
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+        }
     </FluentStack>
 </FluentStack>
 
 @code {
-    protected override void OnInitialized()
+    private bool _isAdmin;
+
+    protected override async Task OnInitializedAsync()
     {
         if (!UserSession.IsAuthenticated)
         {
             NavigationManager.NavigateTo("/signin");
             return;
+        }
+
+        try
+        {
+            var userId = UserSession.UserId ?? string.Empty;
+            var selected = await SelectedProjectService.GetSelectedProjectAsync(userId);
+            _isAdmin = selected != null
+                && await RoleService.IsProjectAdminAsync(selected.ProjectId, userId, UserSession.AccessToken ?? string.Empty);
+        }
+        catch
+        {
+            _isAdmin = false;
         }
     }
 }

@@ -57,7 +57,8 @@ public class WebhooksController(
             {
                 Role = "assistant",
                 Content = $"✅ **{task.Name}** — the model was published successfully.",
-                Timestamp = DateTime.UtcNow
+                Timestamp = DateTime.UtcNow,
+                AgentId = string.IsNullOrEmpty(task.AgentId) ? null : task.AgentId
             };
 
             task.Status = AgentTaskStatus.Completed;

@@ -1,3 +1,6 @@
+using System.Text.Json;
+using System.Text.Json.Serialization;
+
 namespace ApsSamples.Models;
 
 public class ConversationSession
@@ -9,5 +12,11 @@ public class ConversationSession
     public DateTime CreatedAt { get; set; } = DateTime.UtcNow;
     public DateTime LastActivityAt { get; set; } = DateTime.UtcNow;
     public List<ConversationMessage> Messages { get; set; } = new();
-    public System.Text.Json.JsonElement? SerializedAgentSession { get; set; }
+
+    // Serialized agent sessions keyed by agent id, so each assistant in the conversation keeps its own session.
+    public Dictionary<string, JsonElement> SerializedAgentSessions { get; set; } = new();
+
+    // Legacy single-agent session; only read on load to migrate into SerializedAgentSessions.
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public JsonElement? SerializedAgentSession { get; set; }
 }

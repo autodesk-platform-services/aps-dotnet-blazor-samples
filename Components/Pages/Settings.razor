@@ -1,0 +1,84 @@
+@page "/settings"
+@using ApsSamples.Services
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject IProjectRoleService RoleService
+@inject ISelectedProjectService SelectedProjectService
+@inject NavigationManager NavigationManager
+@rendermode InteractiveServer
+
+<PageTitle>Settings - @(_projectName ?? "Project")</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <div>
+        <h1>Settings</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+    </div>
+
+    @if (_accessDenied)
+    {
+        <FluentMessageBar Intent="MessageIntent.Warning">
+            Access denied. Only project administrators can access settings.
+        </FluentMessageBar>
+    }
+    else if (_isLoading)
+    {
+        <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
+            <FluentProgressRing />
+            <span>Loading settings...</span>
+        </FluentStack>
+    }
+    else
+    {
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="20" Wrap="true">
+            <FluentCard Style="max-width: 400px; padding: 24px;">
+                <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                    <FluentIcon Value="@(new Icons.Regular.Size48.Bot())" Color="Color.Accent" />
+                    <h3>Assistants</h3>
+                    <p style="color: var(--neutral-foreground-hint);">
+                        Configure the AI assistants for your project roles.
+                    </p>
+                    <FluentButton Appearance="Appearance.Accent"
+                                  IconStart="@(new Icons.Regular.Size20.Bot())"
+                                  OnClick="@(() => NavigationManager.NavigateTo("/settings/assistants"))">
+                        Assistants
+                    </FluentButton>
+                </FluentStack>
+            </FluentCard>
+        </FluentStack>
+    }
+</FluentStack>
+
+@code {
+    private bool _isLoading = true;
+    private bool _accessDenied;
+    private string? _projectName;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/signin");
+            return;
+        }
+
+        var userId = UserSession.UserId ?? string.Empty;
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(userId);
+        if (selected == null)
+        {
+            NavigationManager.NavigateTo("/projects");
+            return;
+        }
+
+        _projectName = selected.ProjectName;
+
+        var isAdmin = await RoleService.IsProjectAdminAsync(selected.ProjectId, userId, UserSession.AccessToken ?? string.Empty);
+        _accessDenied = !isAdmin;
+        _isLoading = false;
+    }
+}

@@ -48,10 +48,10 @@ public class AgentConversationService : IAgentConversationService
         return session;
     }
 
-    public Task<IReadOnlyList<ConversationSession>> GetConversationsAsync(string projectId, string userId, string agentId)
+    public Task<IReadOnlyList<ConversationSession>> GetConversationsAsync(string projectId, string userId)
     {
         IReadOnlyList<ConversationSession> result = _conversationsCache.Values
-            .Where(c => c.ProjectId == projectId && c.UserId == userId && c.AgentId == agentId)
+            .Where(c => c.ProjectId == projectId && c.UserId == userId)
             .OrderByDescending(c => c.LastActivityAt)
             .ToList();
 
@@ -87,30 +87,32 @@ public class AgentConversationService : IAgentConversationService
         }
 
         session.Messages.Clear();
+        session.SerializedAgentSessions.Clear();
         session.SerializedAgentSession = null;
         session.LastActivityAt = DateTime.UtcNow;
         await SaveToFileAsync();
         await RemoveAgentSessionAsync(conversationId);
     }
 
-    public async Task<AgentSession> GetOrLoadAgentSessionAsync(string conversationId, Func<CancellationToken, Task<AgentSession>> factory, CancellationToken ct = default)
+    public async Task<AgentSession> GetOrLoadAgentSessionAsync(string conversationId, string agentId, Func<CancellationToken, Task<AgentSession>> factory, CancellationToken ct = default)
     {
-        if (_agentSessions.TryGetValue(conversationId, out var cached))
+        var key = SessionKey(conversationId, agentId);
+        if (_agentSessions.TryGetValue(key, out var cached))
         {
             return cached;
         }
 
-        var gate = _sessionLocks.GetOrAdd(conversationId, _ => new SemaphoreSlim(1, 1));
+        var gate = _sessionLocks.GetOrAdd(key, _ => new SemaphoreSlim(1, 1));
         await gate.WaitAsync(ct);
         try
         {
-            if (_agentSessions.TryGetValue(conversationId, out cached))
+            if (_agentSessions.TryGetValue(key, out cached))
             {
                 return cached;
             }
 
             var created = await factory(ct);
-            _agentSessions[conversationId] = created;
+            _agentSessions[key] = created;
             return created;
         }
         finally
@@ -121,7 +123,12 @@ public class AgentConversationService : IAgentConversationService
 
     public Task RemoveAgentSessionAsync(string conversationId)
     {
-        _agentSessions.TryRemove(conversationId, out _);
+        // Sessions are cached per (conversation, agent); drop every agent's session for this conversation.
+        var prefix = SessionKey(conversationId, string.Empty);
+        foreach (var key in _agentSessions.Keys.Where(k => k.StartsWith(prefix, StringComparison.Ordinal)).ToList())
+        {
+            _agentSessions.TryRemove(key, out _);
+        }
         return Task.CompletedTask;
     }
 
@@ -131,17 +138,18 @@ public class AgentConversationService : IAgentConversationService
         return Task.FromResult(session);
     }
 
-    public Task<JsonElement?> GetSerializedSessionAsync(string conversationId)
+    public Task<JsonElement?> GetSerializedSessionAsync(string conversationId, string agentId)
     {
-        if (!_conversationsCache.TryGetValue(conversationId, out var session))
+        if (!_conversationsCache.TryGetValue(conversationId, out var session)
+            || !session.SerializedAgentSessions.TryGetValue(agentId, out var serialized))
         {
             return Task.FromResult<JsonElement?>(null);
         }
 
-        return Task.FromResult(session.SerializedAgentSession);
+        return Task.FromResult<JsonElement?>(serialized);
     }
 
-    public async Task SaveSerializedSessionAsync(string conversationId, JsonElement serializedSession)
+    public async Task SaveSerializedSessionAsync(string conversationId, string agentId, JsonElement serializedSession)
     {
         if (!_conversationsCache.TryGetValue(conversationId, out var session))
         {
@@ -149,7 +157,7 @@ public class AgentConversationService : IAgentConversationService
             return;
         }
 
-        session.SerializedAgentSession = serializedSession;
+        session.SerializedAgentSessions[agentId] = serializedSession;
         await SaveToFileAsync();
     }
 
@@ -161,9 +169,12 @@ public class AgentConversationService : IAgentConversationService
             return;
         }
 
+        session.SerializedAgentSessions.Clear();
         session.SerializedAgentSession = null;
         await SaveToFileAsync();
     }
+
+    private static string SessionKey(string conversationId, string agentId) => $"{conversationId}|{agentId}";
 
     private async Task SaveToFileAsync()
     {
@@ -210,6 +221,14 @@ public class AgentConversationService : IAgentConversationService
             {
                 foreach (var item in loaded)
                 {
+                    // Migrate the legacy single-agent session into the per-agent map.
+                    item.SerializedAgentSessions ??= new();
+                    if (item.SerializedAgentSession.HasValue)
+                    {
+                        item.SerializedAgentSessions.TryAdd(item.AgentId, item.SerializedAgentSession.Value);
+                        item.SerializedAgentSession = null;
+                    }
+
                     _conversationsCache.TryAdd(item.ConversationId, item);
                 }
                 _logger.LogInformation("Loaded {Count} agent conversations from {Path}", loaded.Count, _filePath);
