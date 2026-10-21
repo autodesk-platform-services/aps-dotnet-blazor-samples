@@ -26,12 +26,15 @@ public static class AutodeskServiceExtensions
         });
 
         services.Configure<AgentOptions>(configuration.GetSection("Agent"));
+        services.Configure<RevitWebhookOptions>(configuration.GetSection("RevitWebhooks"));
 
         services.AddAutodeskServices(configuration);
         services.AddDesignAutomation(configuration);
         services.AddConstructionAccountAdmin(configuration);
 
         services.AddScoped<IAccLinkedFilesService, AccLinkedFilesService>();
+        services.AddScoped<IAecDataModelService, AecDataModelService>();
+        services.AddScoped<IRevitWebhookService, RevitWebhookService>();
         services.AddScoped<INamingStandardsService, NamingStandardsService>();
         services.AddScoped<IRevitAutomationService, RevitAutomationService>();
         services.AddScoped<RevitAutomationTools>();
@@ -53,6 +56,11 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<IAgentRegistryService, AgentRegistryService>();
         services.AddSingleton<IToolCatalogService, ToolCatalogService>();
         services.AddSingleton<ISelectedProjectService, SelectedProjectService>();
+        services.AddSingleton<IRevitWebhookTokenService, RevitWebhookTokenService>();
+        services.AddSingleton<IRevitWebhookStore, RevitWebhookStore>();
+        services.AddSingleton<RevitWebhookQueue>();
+        services.AddSingleton<IRevitWebhookDispatcher, RevitWebhookDispatcher>();
+        services.AddHostedService<RevitWebhookProcessor>();
         // SsaService depends on scoped IAPSAuthenticationService + AdminClient, so it must be scoped too.
         services.AddScoped<ISsaService, SsaService>();
 

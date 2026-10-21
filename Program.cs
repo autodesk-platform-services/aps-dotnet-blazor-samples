@@ -26,10 +26,11 @@ if (!app.Environment.IsDevelopment())
 }
 app.UseStatusCodePagesWithReExecute("/not-found", createScopeForStatusCodePages: true);
 
-// Conditional HTTPS redirection - exclude /da endpoints to allow ngrok HTTP forwarding
+// Conditional HTTPS redirection - exclude /da and /api/revit-webhooks endpoints to allow ngrok HTTP forwarding
 app.Use(async (context, next) =>
 {
-    if (!context.Request.Path.StartsWithSegments("/da"))
+    if (!context.Request.Path.StartsWithSegments("/da") &&
+        !context.Request.Path.StartsWithSegments("/api/revit-webhooks"))
     {
         if (context.Request.IsHttps == false)
         {

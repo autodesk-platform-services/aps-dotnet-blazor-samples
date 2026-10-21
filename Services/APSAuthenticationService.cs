@@ -13,7 +13,14 @@ public interface IAPSAuthenticationService
     string ClientSecret { get; }
     string? CallbackUrl { get; }
     Task<string> GetThreeLeggedTokenAsync(string code, List<Scopes> scopes);
+
+    // Same exchange as GetThreeLeggedTokenAsync, but returns the full token (including the
+    // refresh token) for callers that need to act on the user's behalf outside their session.
+    Task<ThreeLeggedToken> ExchangeCodeAsync(string code, List<Scopes> scopes);
     Task<string> RefreshTokenAsync(string refreshToken);
+
+    // Refresh tokens rotate on use: callers must persist the RefreshToken of the returned token.
+    Task<ThreeLeggedToken> RefreshThreeLeggedTokenAsync(string refreshToken);
     string GetAuthorizationUrl(List<Scopes> scopes);
     Task<UserInfo> GetUserInfoAsync(string accessToken);
 
@@ -71,22 +78,33 @@ public class APSAuthenticationService : IAPSAuthenticationService
 
     public async Task<string> GetThreeLeggedTokenAsync(string code, List<Scopes> scopes)
     {
+        var auth = await ExchangeCodeAsync(code, scopes);
+        return auth.AccessToken;
+    }
+
+    public async Task<ThreeLeggedToken> ExchangeCodeAsync(string code, List<Scopes> scopes)
+    {
         if (string.IsNullOrEmpty(CallbackUrl))
         {
             throw new InvalidOperationException("CallbackUrl must be configured for three-legged authentication");
         }
 
-        var auth = await _authClient.GetThreeLeggedTokenAsync(ClientId, code, CallbackUrl, clientSecret: ClientSecret);
-        return auth.AccessToken;
+        return await _authClient.GetThreeLeggedTokenAsync(ClientId, code, CallbackUrl, clientSecret: ClientSecret);
     }
 
     public async Task<string> RefreshTokenAsync(string refreshToken)
     {
-        var auth = await _authClient.RefreshTokenAsync(ClientId, refreshToken);
+        var auth = await RefreshThreeLeggedTokenAsync(refreshToken);
         _cachedToken = auth.AccessToken;
         _tokenExpiration = DateTime.UtcNow.AddSeconds((auth.ExpiresIn ?? 3600) - 60);
 
         return _cachedToken;
+    }
+
+    public async Task<ThreeLeggedToken> RefreshThreeLeggedTokenAsync(string refreshToken)
+    {
+        // Named arguments: the SDK's positional order is not (clientId, refreshToken).
+        return await _authClient.RefreshTokenAsync(refreshToken: refreshToken, clientId: ClientId, clientSecret: ClientSecret);
     }
 
     public async Task<UserInfo> GetUserInfoAsync(string accessToken)
