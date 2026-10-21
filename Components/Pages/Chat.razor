@@ -135,17 +135,16 @@
     }
 
     .chat-columns {
-        align-items: flex-start;
-        /* Kept well under 100vh (header + the extra project-name row above this, plus the
-           app footer below it, already take up real space) so the footer stays on screen
-           instead of being pushed below the fold. */
-        height: 85vh;
+        /* Fills whatever height is left in the page root, so the page never overflows the body area. */
+        flex: 1 1 auto;
+        min-height: 0;
     }
 
     @@media (max-width: 768px) {
         .chat-columns {
             flex-direction: column !important;
             height: auto !important;
+            flex: none !important;
         }
         .chat-side-panel,
         .chat-task-panel {
@@ -339,14 +338,7 @@
     }
 </style>
 
-<FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
-    <div style="display: flex; align-items: center; gap: 16px;">
-        @if (!string.IsNullOrEmpty(_projectName))
-        {
-            <span style="color: var(--neutral-foreground-hint); font-weight: 600;">@_projectName</span>
-        }
-    </div>
-
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="12" Style="height: 100%;">
     @if (_noAgentsAccessible)
     {
         <FluentMessageBar Intent="MessageIntent.Warning">
@@ -356,7 +348,7 @@
 
     @if (_conversations.Count > 0 || _showNewConversationPicker)
     {
-        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="0" Class="chat-columns">
+        <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="0" VerticalAlignment="VerticalAlignment.Stretch" Class="chat-columns">
             <FluentStack Orientation="Orientation.Vertical"
                          VerticalGap="8"
                          Class="chat-side-panel"
