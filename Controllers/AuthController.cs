@@ -10,6 +10,7 @@ public class AuthController(
     IAPSAuthenticationService apsAuth,
     IUserSessionService userSession,
     ISelectedProjectService selectedProjectService,
+    IRevitWebhookTokenService revitWebhookTokens,
     ILogger<AuthController> logger) : ControllerBase
 {
     [HttpGet("login")]
@@ -64,11 +65,12 @@ public class AuthController(
                 Scopes.ViewablesRead
             };
 
-            var token = await apsAuth.GetThreeLeggedTokenAsync(code, scopes);
-            
+            var threeLeggedToken = await apsAuth.ExchangeCodeAsync(code, scopes);
+            var token = threeLeggedToken.AccessToken;
+
             // Store token in session via UserSessionService
             userSession.AccessToken = token;
-            
+
             // Get user information
             try
             {
@@ -76,14 +78,25 @@ public class AuthController(
                 userSession.UserName = userInfo.Name;
                 userSession.UserEmail = userInfo.Email;
                 userSession.UserId = userInfo.Sub;
-                
+
                 logger.LogInformation("User authenticated: {UserName} ({Email})", userInfo.Name, userInfo.Email);
             }
             catch (Exception ex)
             {
                 logger.LogWarning(ex, "Could not retrieve user info, but authentication succeeded");
             }
-            
+
+            // Revit webhook subscriptions query the AEC Data Model on the user's behalf after their
+            // session ends, so keep their refresh token.
+            if (string.IsNullOrEmpty(userSession.UserId) || string.IsNullOrEmpty(threeLeggedToken.RefreshToken))
+            {
+                logger.LogWarning("Not storing a Revit webhook refresh token: user id or refresh token is missing");
+            }
+            else
+            {
+                await revitWebhookTokens.SaveRefreshTokenAsync(userSession.UserId, threeLeggedToken.RefreshToken);
+            }
+
             // Ensure session is saved
             await HttpContext.Session.CommitAsync();
 

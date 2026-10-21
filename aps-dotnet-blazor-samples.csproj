@@ -25,6 +25,7 @@
     <Content Remove="Data\agent-tasks.json" />
     <Content Remove="Data\ssa-keys.json" />
     <Content Remove="Data\agents.json" />
+    <Content Remove="Data\revit-webhook-tokens.json" />
   </ItemGroup>
 
   <ItemGroup>
