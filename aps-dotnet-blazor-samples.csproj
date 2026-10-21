@@ -45,4 +45,8 @@
   <ItemGroup>
     <Folder Include="Data\" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="ApsSamples.Tests" />
+  </ItemGroup>
 </Project>
