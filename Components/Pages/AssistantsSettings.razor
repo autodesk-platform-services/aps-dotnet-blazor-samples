@@ -1,4 +1,4 @@
-@page "/agents"
+@page "/settings/assistants"
 @using ApsSamples.Models
 @using ApsSamples.Services
 @using Microsoft.FluentUI.AspNetCore.Components
@@ -12,11 +12,12 @@
 @inject NavigationManager NavigationManager
 @rendermode InteractiveServer
 
-<PageTitle>Agents - @(_projectName ?? "Project")</PageTitle>
+<PageTitle>Assistants - @(_projectName ?? "Project")</PageTitle>
 
 <FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
     <div>
-        <h1>Agents</h1>
+        <a href="/settings" style="font-size: 13px;">&larr; Settings</a>
+        <h1>Assistants</h1>
         @if (!string.IsNullOrEmpty(_projectName))
         {
             <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
@@ -35,7 +36,7 @@
     {
         <FluentStack HorizontalAlignment="HorizontalAlignment.Center">
             <FluentProgressRing />
-            <span>Loading agents...</span>
+            <span>Loading assistants...</span>
         </FluentStack>
     }
     else
@@ -55,17 +56,17 @@
                           IconStart="@(new Icons.Regular.Size20.Add())"
                           OnClick="OpenCreateWizard"
                           Disabled="@(_agents.Count >= MaxAgents)"
-                          Title="@(_agents.Count >= MaxAgents ? "Maximum 10 agents reached (APS SSA limit)" : "Create a new agent")">
-                Create New Agent
+                          Title="@(_agents.Count >= MaxAgents ? "Maximum 10 assistants reached (APS SSA limit)" : "Create a new assistant")">
+                Create New Assistant
             </FluentButton>
             <span style="color: var(--neutral-foreground-hint); font-size: 13px;">
-                @_agents.Count / @MaxAgents agents configured
+                @_agents.Count / @MaxAgents assistants configured
             </span>
             <FluentButton Appearance="Appearance.Outline"
                           IconStart="@(new Icons.Regular.Size20.Delete())"
                           Disabled="@_deletingAllSsas"
                           OnClick="DeleteAllSsaAccounts"
-                          Title="TEMPORARY: fetches every SSA account on this app and deletes them all">
+                          Title="TEMPORARY: deletes every SSA account on this app. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
                 @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
             </FluentButton>
         </FluentStack>
@@ -76,7 +77,7 @@
                             ResizableColumns="true"
                             RowSize="DataGridRowSize.Medium"
                             Style="width: 100%;">
-                <PropertyColumn Property="@(a => a.AgentName)" Sortable="true" Title="Agent Name" />
+                <PropertyColumn Property="@(a => a.AgentName)" Sortable="true" Title="Assistant Name" />
                 <PropertyColumn Property="@(a => a.RoleName)" Sortable="true" Title="Role" />
                 <PropertyColumn Property="@(a => a.CreatedAt)" Sortable="true" Title="Created At" Format="yyyy-MM-dd HH:mm" />
                 <TemplateColumn Title="Actions">
@@ -84,7 +85,7 @@
                                   IconStart="@(new Icons.Regular.Size16.Delete())"
                                   Disabled="@(_deletingAgentId == context.AgentId)"
                                   OnClick="@(() => DeleteAgent(context))"
-                                  Title="Delete agent">
+                                  Title="Delete assistant">
                         @(_deletingAgentId == context.AgentId ? "Deleting..." : "Delete")
                     </FluentButton>
                 </TemplateColumn>
@@ -93,7 +94,7 @@
         else
         {
             <FluentMessageBar Intent="MessageIntent.Info">
-                No agents configured yet. Click "Create New Agent" to add one.
+                No assistants configured yet. Click "Create New Assistant" to add one.
             </FluentMessageBar>
         }
     }
@@ -105,14 +106,14 @@
               PreventScroll="true"
               Style="min-width: 720px; max-width: 90vw;">
     <FluentDialogHeader>
-        <FluentLabel Typo="Typography.PaneHeader">Create New Agent</FluentLabel>
+        <FluentLabel Typo="Typography.PaneHeader">Create New Assistant</FluentLabel>
     </FluentDialogHeader>
     <FluentDialogBody>
         @if (_wizardBusy)
         {
             <FluentStack HorizontalAlignment="HorizontalAlignment.Center" Style="padding: 30px;">
                 <FluentProgressRing />
-                <span>Creating agent (this may take up to a minute)...</span>
+                <span>Creating assistant (this may take up to a minute)...</span>
             </FluentStack>
         }
         else
@@ -125,7 +126,7 @@
             @if (_wizardStep == 1)
             {
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
-                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Agent Details</h3>
+                    <h3 style="margin: 0;">Step 1 of 3 &mdash; Assistant Details</h3>
 
                     <FluentSelect TOption="ProjectRoleInfo"
                                   Items="@_availableRoles"
@@ -140,7 +141,7 @@
                     @if (!string.IsNullOrEmpty(_selectedRoleName))
                     {
                         <div>
-                            <strong>Agent Name:</strong>
+                            <strong>Assistant Name:</strong>
                             <span style="color: var(--neutral-foreground-hint); margin-left: 8px;">
                                 @($"{_selectedRoleName} Assistant")
                             </span>
@@ -168,13 +169,13 @@
                 <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
                     <h3 style="margin: 0;">Step 2 of 3 &mdash; Forma Products</h3>
                     <p style="color: var(--neutral-foreground-hint); margin: 0;">
-                        Grant the agent access to the following Forma products in this project.
+                        Data Management is always granted. Optionally, grant the assistant access to the other Forma products in this project.
                     </p>
                     <FluentStack Orientation="Orientation.Vertical" VerticalGap="4">
                         <FluentCheckbox Label="Data Management"
                                         Value="true"
                                         Disabled="true"
-                                        title="Granted by default; not part of the product selection sent to APS." />
+                                        title="Granted by default; sent to APS automatically when no other product is selected." />
                         @foreach (var product in FormaProducts)
                         {
                             <FluentCheckbox Label="@product.Label"
@@ -190,30 +191,34 @@
                     <h3 style="margin: 0;">Step 3 of 3 &mdash; Tools</h3>
                     <FluentCard Style="height: 420px; padding: 16px; display: flex; flex-direction: column;">
                         <p style="color: var(--neutral-foreground-hint); margin: 0 0 12px 0;">
-                            Select at least one tool. The agent will invoke these to perform tasks.
+                            Select at least one tool. The assistant will invoke these to perform tasks.
                         </p>
                         <FluentTextField @bind-Value="_toolSearchText"
                                           Placeholder="Search tools..."
                                           Style="width: 100%; margin-bottom: 12px; flex-shrink: 0;" />
                         <div style="flex: 1; overflow-y: auto;">
                             <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
-                                @foreach (var tool in FilteredTools)
+                                @foreach (var group in FilteredToolGroups)
                                 {
-                                    <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
-                                        <FluentCheckbox Label="@tool.DisplayName"
-                                                        Value="@_selectedToolIds.Contains(tool.ToolId)"
-                                                        ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
-                                        <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
-                                              @onclick="@(() => ToggleDetails(tool.ToolId))">
-                                            @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
-                                        </span>
-                                        @if (_expandedToolIds.Contains(tool.ToolId))
-                                        {
-                                            <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
-                                                @tool.Description
-                                            </div>
-                                        }
-                                    </div>
+                                    <h4 style="margin: 4px 0 0 0;">@group.Key</h4>
+                                    @foreach (var tool in group)
+                                    {
+                                        <div style="border-bottom: 1px solid var(--neutral-stroke-divider-rest); padding-bottom: 8px;">
+                                            <FluentCheckbox Label="@tool.DisplayName"
+                                                            Value="@_selectedToolIds.Contains(tool.ToolId)"
+                                                            ValueChanged="@((bool v) => ToggleTool(tool.ToolId, v))" />
+                                            <span style="cursor: pointer; color: var(--accent-fill-rest); font-size: 12px; margin-left: 24px; text-decoration: underline;"
+                                                  @onclick="@(() => ToggleDetails(tool.ToolId))">
+                                                @(_expandedToolIds.Contains(tool.ToolId) ? "hide details" : "details")
+                                            </span>
+                                            @if (_expandedToolIds.Contains(tool.ToolId))
+                                            {
+                                                <div style="font-size: 12px; color: var(--neutral-foreground-hint); margin-left: 24px; margin-top: 4px;">
+                                                    @tool.Description
+                                                </div>
+                                            }
+                                        </div>
+                                    }
                                 }
                                 @if (!FilteredTools.Any())
                                 {
@@ -265,8 +270,8 @@
 
     // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
     // endpoint (https://aps.autodesk.com/en/docs/acc/v1/reference/http/admin-projects-project-Id-users-POST/).
-    // "docs" (Data Management) is granted by default and has no selectable key, so it's rendered as a
-    // separate disabled/checked checkbox instead of an entry in this list.
+    // "docs" (Data Management) is always granted, so it's rendered as a separate disabled/checked checkbox
+    // instead of an entry in this list. SsaService adds "docs" when no optional product is selected.
     private static readonly (string Key, string Label)[] FormaProducts = new[]
     {
         ("designCollaboration", "Design Collaboration"),
@@ -315,6 +320,10 @@
             : _allTools.Where(t =>
                 t.DisplayName.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase)
                 || t.Description.Contains(_toolSearchText, StringComparison.OrdinalIgnoreCase));
+
+    // GroupBy keeps groups in order of first appearance, so modules follow the catalog order.
+    private IEnumerable<IGrouping<string, ToolDescriptor>> FilteredToolGroups =>
+        FilteredTools.GroupBy(t => string.IsNullOrWhiteSpace(t.Module) ? "Other" : t.Module);
 
     protected override async Task OnInitializedAsync()
     {
@@ -367,7 +376,7 @@
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Error loading agents page: {ex.Message}";
+            _errorMessage = $"Error loading assistants page: {ex.Message}";
         }
         finally
         {
@@ -451,7 +460,6 @@
         return _wizardStep switch
         {
             1 => !string.IsNullOrEmpty(_selectedRoleId) && !string.IsNullOrWhiteSpace(_instructionsText),
-            2 => _selectedProductKeys.Count > 0,
             _ => true
         };
     }
@@ -460,8 +468,7 @@
     {
         return !string.IsNullOrEmpty(_selectedRoleId)
                && !string.IsNullOrWhiteSpace(_instructionsText)
-               && _selectedToolIds.Count > 0
-               && _selectedProductKeys.Count > 0;
+               && _selectedToolIds.Count > 0;
     }
 
     private void NextStep()
@@ -533,11 +540,11 @@
             RefreshAvailableRoles();
 
             _hideWizard = true;
-            _infoMessage = $"Agent \"{agentName}\" created successfully.";
+            _infoMessage = $"Assistant \"{agentName}\" created successfully.";
         }
         catch (Exception ex)
         {
-            _wizardError = $"Failed to create agent: {ex.Message}";
+            _wizardError = $"Failed to create assistant: {ex.Message}";
         }
         finally
         {
@@ -555,26 +562,24 @@
 
         try
         {
-            if (!string.IsNullOrEmpty(agent.ProjectUserId))
-            {
-                await SsaService.RemoveSsaFromProjectAsync(
-                    agent.ProjectId,
-                    agent.ProjectUserId,
-                    UserSession.AccessToken ?? string.Empty);
-            }
             if (!string.IsNullOrEmpty(agent.SsaId))
             {
-                await SsaService.DeleteSsaAsync(agent.SsaId);
+                // Removes the robot user from the project first, then deletes the SSA.
+                await SsaService.DeprovisionSsaAsync(
+                    agent.ProjectId,
+                    agent.SsaId,
+                    agent.ProjectUserId,
+                    UserSession.AccessToken ?? string.Empty);
             }
             await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
 
             _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
             RefreshAvailableRoles();
-            _infoMessage = $"Agent \"{agent.AgentName}\" deleted.";
+            _infoMessage = $"Assistant \"{agent.AgentName}\" deleted.";
         }
         catch (Exception ex)
         {
-            _errorMessage = $"Failed to delete agent: {ex.Message}";
+            _errorMessage = $"Failed to delete assistant: {ex.Message}";
         }
         finally
         {
@@ -584,6 +589,8 @@
     }
 
     // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
+    // Every SSA on the app is deleted. Robot users are removed from the project only for SSAs tracked
+    // by an agent in this project; untracked SSAs are deleted directly because their project is unknown.
     private async Task DeleteAllSsaAccounts()
     {
         _deletingAllSsas = true;
@@ -596,12 +603,27 @@
             var ssaIds = await SsaService.GetAllSsaIdsAsync();
             var deleted = 0;
             var failed = 0;
+            var untracked = 0;
 
             foreach (var ssaId in ssaIds)
             {
                 try
                 {
-                    await SsaService.DeleteSsaAsync(ssaId);
+                    var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
+                    if (agent is null)
+                    {
+                        await SsaService.DeleteSsaAsync(ssaId);
+                        untracked++;
+                    }
+                    else
+                    {
+                        await SsaService.DeprovisionSsaAsync(
+                            agent.ProjectId,
+                            agent.SsaId,
+                            agent.ProjectUserId,
+                            UserSession.AccessToken ?? string.Empty);
+                        await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                    }
                     deleted++;
                 }
                 catch (Exception ex)
@@ -611,9 +633,10 @@
                 }
             }
 
-            _infoMessage = failed == 0
-                ? $"Deleted {deleted} SSA account(s)."
-                : $"Deleted {deleted} SSA account(s), {failed} failed.";
+            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
+            RefreshAvailableRoles();
+
+            _infoMessage = $"Deleted {deleted} SSA account(s) ({untracked} without project removal), {failed} failed.";
         }
         catch (Exception ex)
         {

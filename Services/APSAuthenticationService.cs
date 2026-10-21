@@ -29,6 +29,11 @@ public interface IAPSAuthenticationService
     // callback, where no user access token is available.
     Task<string> GetTwoLeggedTokenAsync();
 
+    // App-level (2-legged) token with only account:read, for hq/v1 account endpoints (e.g. hub
+    // user search) that accept neither 3-legged nor SSA tokens. Kept separate from the token above
+    // so the webhook flow's scopes stay unchanged.
+    Task<string> GetAccountTwoLeggedTokenAsync();
+
     // App-level (2-legged) token minted with the *SSA App* credentials (SsaApp:ClientId/Secret),
     // scoped for SSA management endpoints. Distinct from the primary Forge app token above.
     Task<string> GetSsaAppTwoLeggedTokenAsync();
@@ -42,6 +47,8 @@ public class APSAuthenticationService : IAPSAuthenticationService
     private DateTime _tokenExpiration;
     private string? _twoLeggedToken;
     private DateTime _twoLeggedTokenExpiration;
+    private string? _accountTwoLeggedToken;
+    private DateTime _accountTwoLeggedTokenExpiration;
     private string? _ssaAppToken;
     private DateTime _ssaAppTokenExpiration;
 
@@ -121,6 +128,24 @@ public class APSAuthenticationService : IAPSAuthenticationService
         _twoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds((token.ExpiresIn ?? 3600) - 60);
 
         return _twoLeggedToken;
+    }
+
+    public async Task<string> GetAccountTwoLeggedTokenAsync()
+    {
+        if (_accountTwoLeggedToken != null && DateTime.UtcNow < _accountTwoLeggedTokenExpiration)
+        {
+            return _accountTwoLeggedToken;
+        }
+
+        var token = await _authClient.GetTwoLeggedTokenAsync(
+            ClientId,
+            ClientSecret,
+            new List<Scopes> { Scopes.AccountRead });
+
+        _accountTwoLeggedToken = token.AccessToken;
+        _accountTwoLeggedTokenExpiration = DateTime.UtcNow.AddSeconds((token.ExpiresIn ?? 3600) - 60);
+
+        return _accountTwoLeggedToken;
     }
 
     // The Autodesk.Authentication 2.0.1 Scopes enum doesn't yet expose the

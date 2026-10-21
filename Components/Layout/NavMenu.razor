@@ -1,5 +1,7 @@
 ﻿@using ApsSamples.Services
 @inject IUserSessionService UserSession
+@inject ISelectedProjectService SelectedProjectService
+@inject IProjectRoleService RoleService
 
 <div class="navmenu">
     <input type="checkbox" title="Menu expand/collapse toggle" id="navmenu-toggle" class="navmenu-icon" />
@@ -14,8 +16,11 @@
                 <FluentNavLink Href="create-sheets" Icon="@(new Icons.Regular.Size20.DocumentMultiple())" IconColor="Color.Accent">Create Sheets</FluentNavLink>
                 <FluentNavLink Href="view-models" Icon="@(new Icons.Regular.Size20.Cube())" IconColor="Color.Accent">Model Viewer</FluentNavLink>
                 <FluentNavLink Href="revit-webhooks" Icon="@(new Icons.Regular.Size20.Alert())" IconColor="Color.Accent">Revit Webhooks</FluentNavLink>
-                <FluentNavLink Href="chat" Icon="@(new Icons.Regular.Size20.ChatMultiple())" IconColor="Color.Accent">Assistants</FluentNavLink>
-                <FluentNavLink Href="agents" Icon="@(new Icons.Regular.Size20.Bot())" IconColor="Color.Accent">Agents</FluentNavLink>
+                <FluentNavLink Href="assistants" Icon="@(new Icons.Regular.Size20.ChatMultiple())" IconColor="Color.Accent">Assistants</FluentNavLink>
+                @if (_isAdmin)
+                {
+                    <FluentNavLink Href="settings" Icon="@(new Icons.Regular.Size20.Settings())" IconColor="Color.Accent">Settings</FluentNavLink>
+                }
             }
         </FluentNavMenu>
     </nav>
@@ -23,4 +28,25 @@
 
 @code {
     private bool expanded = true;
+    private bool _isAdmin;
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            return;
+        }
+
+        try
+        {
+            var userId = UserSession.UserId ?? string.Empty;
+            var selected = await SelectedProjectService.GetSelectedProjectAsync(userId);
+            _isAdmin = selected != null
+                && await RoleService.IsProjectAdminAsync(selected.ProjectId, userId, UserSession.AccessToken ?? string.Empty);
+        }
+        catch
+        {
+            _isAdmin = false;
+        }
+    }
 }

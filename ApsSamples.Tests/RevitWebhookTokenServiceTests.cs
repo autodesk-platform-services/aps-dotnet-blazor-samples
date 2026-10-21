@@ -148,6 +148,7 @@ public class RevitWebhookTokenServiceTests : IClassFixture<TempWorkingDirectoryF
         }
 
         public Task<string> GetThreeLeggedTokenAsync(string code, List<Scopes> scopes) => throw new NotImplementedException();
+        public Task<string> GetAccountTwoLeggedTokenAsync() => throw new NotImplementedException();
         public Task<ThreeLeggedToken> ExchangeCodeAsync(string code, List<Scopes> scopes) => throw new NotImplementedException();
         public Task<string> RefreshTokenAsync(string refreshToken) => throw new NotImplementedException();
         public string GetAuthorizationUrl(List<Scopes> scopes) => throw new NotImplementedException();
