@@ -21,6 +21,36 @@ public class SsaServiceHelperTests
         Assert.Equal("ssa-id", SsaService.ResolveProjectUserId(projectUserId, "ssa-id"));
     }
 
+    [Fact]
+    public void ResolveProductKeys_EmptyList_ReturnsDocs()
+    {
+        Assert.Equal(["docs"], SsaService.ResolveProductKeys([]));
+    }
+
+    [Fact]
+    public void ResolveProductKeys_Null_ReturnsDocs()
+    {
+        Assert.Equal(["docs"], SsaService.ResolveProductKeys(null));
+    }
+
+    [Fact]
+    public void ResolveProductKeys_OnlyBlankEntries_ReturnsDocs()
+    {
+        Assert.Equal(["docs"], SsaService.ResolveProductKeys(["", "   ", null!]));
+    }
+
+    [Fact]
+    public void ResolveProductKeys_NonEmptyList_ReturnsKeysInOrder()
+    {
+        Assert.Equal(["build", "cost"], SsaService.ResolveProductKeys(["build", "cost"]));
+    }
+
+    [Fact]
+    public void ResolveProductKeys_PaddedEntries_ReturnsTrimmedKeys()
+    {
+        Assert.Equal(["build", "cost"], SsaService.ResolveProductKeys([" build ", "", "cost  "]));
+    }
+
     [Theory]
     [InlineData(HttpStatusCode.NotFound)]
     [InlineData(HttpStatusCode.Gone)]
