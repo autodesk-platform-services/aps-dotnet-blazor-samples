@@ -1,0 +1,572 @@
+@page "/revit-webhooks"
+@using ApsSamples.Models
+@using ApsSamples.Services
+@using Autodesk.DataManagement
+@using Autodesk.DataManagement.Model
+@using Microsoft.FluentUI.AspNetCore.Components
+@inject IUserSessionService UserSession
+@inject ISelectedProjectService SelectedProjectService
+@inject DataManagementClient DataManagementClient
+@inject IRevitWebhookService RevitWebhookService
+@inject IRevitWebhookStore RevitWebhookStore
+@inject NavigationManager NavigationManager
+@implements IDisposable
+@rendermode InteractiveServer
+
+<PageTitle>Revit Webhooks - @_projectName</PageTitle>
+
+<FluentStack Orientation="Orientation.Vertical" VerticalGap="20">
+    <div>
+        <h1>Revit Webhooks</h1>
+        @if (!string.IsNullOrEmpty(_projectName))
+        {
+            <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+                Project: @_projectName
+            </p>
+        }
+        <p style="color: var(--neutral-foreground-hint); margin: 5px 0 0 0;">
+            Subscribe a Revit Cloud Worksharing model and receive <code>@RevitWebhookEventTypes.LinkAdded</code> and
+            <code>@RevitWebhookEventTypes.LinkRemoved</code> events whenever Revit links change.
+        </p>
+    </div>
+
+    @if (!string.IsNullOrEmpty(_errorMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Error" OnDismiss="@(() => _errorMessage = null)">
+            @_errorMessage
+        </FluentMessageBar>
+    }
+
+    @if (!string.IsNullOrEmpty(_successMessage))
+    {
+        <FluentMessageBar Intent="MessageIntent.Success" OnDismiss="@(() => _successMessage = null)">
+            @_successMessage
+        </FluentMessageBar>
+    }
+
+    <FluentCard Style="padding: 24px;">
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            <h3 style="margin: 0;">New Subscription</h3>
+
+            @if (_isLoadingModels)
+            {
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                    <FluentProgressRing Style="width: 20px; height: 20px;" />
+                    <span>Loading Revit Cloud Worksharing models...</span>
+                </FluentStack>
+            }
+            else if (_availableModels.Any())
+            {
+                <FluentSelect TOption="RevitModel"
+                              Label="Revit Cloud Worksharing model"
+                              Items="@_availableModels"
+                              OptionValue="@(m => m.LineageUrn)"
+                              OptionText="@(m => m.ModelName)"
+                              @bind-Value="@_selectedLineageUrn"
+                              Placeholder="Select a model..."
+                              Width="400px">
+                </FluentSelect>
+            }
+            else
+            {
+                <FluentMessageBar Intent="MessageIntent.Warning">
+                    No Revit Cloud Worksharing models found in this project.
+                </FluentMessageBar>
+            }
+
+            <FluentRadioGroup @bind-Value="@_mode" Label="Trigger" Orientation="Orientation.Vertical">
+                <FluentRadio Value="@RevitWebhookMode.Publish">
+                    <strong>model.publish</strong> &mdash; compare each published version with the previous one.
+                </FluentRadio>
+                <FluentRadio Value="@RevitWebhookMode.Sync">
+                    <strong>model.sync</strong> &mdash; compare each synchronized (WIP) version with the last published one; each change fires once.
+                </FluentRadio>
+            </FluentRadioGroup>
+
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+                <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
+                    <strong>Outgoing targets</strong>
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.Add())"
+                                  OnClick="AddTarget">
+                        Add target
+                    </FluentButton>
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.Bug())"
+                                  OnClick="AddDemoReceiverTarget"
+                                  Title="Send events to this app's log-only demo receiver">
+                        Add demo receiver
+                    </FluentButton>
+                </FluentStack>
+
+                @if (!_targets.Any())
+                {
+                    <span style="color: var(--neutral-foreground-hint);">
+                        No targets yet. Events are still recorded in the event log below.
+                    </span>
+                }
+
+                @foreach (var target in _targets)
+                {
+                    <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="12" VerticalAlignment="VerticalAlignment.Center" Wrap="true">
+                        <FluentTextField @bind-Value="target.Url"
+                                         Placeholder="https://example.com/webhook"
+                                         Style="width: 360px;" />
+                        <FluentTextField @bind-Value="target.Secret"
+                                         TextFieldType="TextFieldType.Password"
+                                         Placeholder="Secret (optional)"
+                                         Style="width: 200px;" />
+                        <FluentCheckbox Label="@RevitWebhookEventTypes.LinkAdded" @bind-Value="target.LinkAdded" />
+                        <FluentCheckbox Label="@RevitWebhookEventTypes.LinkRemoved" @bind-Value="target.LinkRemoved" />
+                        <FluentButton Appearance="Appearance.Lightweight"
+                                      IconStart="@(new Icons.Regular.Size16.Delete())"
+                                      OnClick="@(() => _targets.Remove(target))"
+                                      Title="Remove target" />
+                    </FluentStack>
+                }
+            </FluentStack>
+
+            <div>
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size20.Alert())"
+                              OnClick="Subscribe"
+                              Loading="@_isSubscribing"
+                              Disabled="@(_isSubscribing || string.IsNullOrEmpty(_selectedLineageUrn))">
+                    Subscribe
+                </FluentButton>
+            </div>
+        </FluentStack>
+    </FluentCard>
+
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+        <h3 style="margin: 0;">Subscriptions</h3>
+        @if (!_subscriptions.Any())
+        {
+            <span style="color: var(--neutral-foreground-hint);">No subscriptions in this project.</span>
+        }
+        else
+        {
+            <FluentDataGrid Items="@_subscriptions.AsQueryable()"
+                            ResizableColumns="false"
+                            RowSize="DataGridRowSize.Large"
+                            Style="width: 100%;">
+                <PropertyColumn Property="@(s => s.ModelName)" Sortable="true" Title="Model" />
+                <TemplateColumn Title="Trigger" Width="140px">
+                    <span>@(context.Mode == RevitWebhookMode.Publish ? "model.publish" : "model.sync")</span>
+                </TemplateColumn>
+                <PropertyColumn Property="@(s => s.BaselineVersion)" Sortable="true" Title="Baseline Version" Width="150px" />
+                <TemplateColumn Title="Targets" Width="100px">
+                    <span>@context.Targets.Count</span>
+                </TemplateColumn>
+                <TemplateColumn Title="Status">
+                    <div style="display: flex; align-items: center; gap: 8px;">
+                        @switch (context.Status)
+                        {
+                            case RevitWebhookSubscriptionStatus.Processing:
+                                <FluentProgressRing Style="width: 20px; height: 20px;" />
+                                <span>Waiting for extraction...</span>
+                                break;
+                            case RevitWebhookSubscriptionStatus.Error:
+                                <FluentIcon Value="@(new Icons.Regular.Size20.ErrorCircle())" Color="Color.Error" />
+                                <span title="@context.LastError">@context.LastError</span>
+                                break;
+                            default:
+                                <FluentIcon Value="@(new Icons.Regular.Size20.CheckmarkCircle())" Color="Color.Success" />
+                                <span>Active</span>
+                                break;
+                        }
+                    </div>
+                </TemplateColumn>
+                <PropertyColumn Property="@(s => s.CreatedAt.ToLocalTime())" Format="yyyy-MM-dd HH:mm:ss" Sortable="true" Title="Created At" Width="170px" />
+                <TemplateColumn Title="Actions" Width="160px">
+                    <FluentButton Appearance="Appearance.Lightweight"
+                                  IconStart="@(new Icons.Regular.Size16.Delete())"
+                                  OnClick="@(() => Unsubscribe(context))"
+                                  Disabled="@_unsubscribingIds.Contains(context.Id)"
+                                  Title="Unsubscribe">
+                        Unsubscribe
+                    </FluentButton>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+    </FluentStack>
+
+    <FluentStack Orientation="Orientation.Vertical" VerticalGap="8">
+        <h3 style="margin: 0;">Event Log</h3>
+        @if (!_events.Any())
+        {
+            <span style="color: var(--neutral-foreground-hint);">
+                No events yet. Events appear here after a callback is processed (extraction can take several minutes).
+            </span>
+        }
+        else
+        {
+            <FluentDataGrid Items="@_events.AsQueryable()"
+                            ResizableColumns="false"
+                            RowSize="DataGridRowSize.Large"
+                            Style="width: 100%;">
+                <PropertyColumn Property="@(e => e.Timestamp.ToLocalTime())" Format="yyyy-MM-dd HH:mm:ss" Sortable="true" Title="Time" Width="170px" />
+                <TemplateColumn Title="Model">
+                    <span>@GetModelName(context.SubscriptionId)</span>
+                </TemplateColumn>
+                <TemplateColumn Title="Event" Width="180px">
+                    @if (context.EventType == RevitWebhookEventTypes.LinkAdded)
+                    {
+                        <FluentBadge Appearance="Appearance.Lightweight" BackgroundColor="#107c10" Color="white">
+                            @context.EventType
+                        </FluentBadge>
+                    }
+                    else if (context.EventType == RevitWebhookEventTypes.LinkRemoved)
+                    {
+                        <FluentBadge Appearance="Appearance.Lightweight" BackgroundColor="#d83b01" Color="white">
+                            @context.EventType
+                        </FluentBadge>
+                    }
+                    else
+                    {
+                        <FluentBadge Appearance="Appearance.Lightweight">@context.EventType</FluentBadge>
+                    }
+                </TemplateColumn>
+                <PropertyColumn Property="@(e => e.FileName)" Sortable="true" Title="Link File" />
+                <TemplateColumn Title="Versions" Width="110px">
+                    <span>@context.FromVersion &rarr; @context.ToVersion</span>
+                </TemplateColumn>
+                <PropertyColumn Property="@(e => e.Source)" Title="Source" Width="130px" />
+                <TemplateColumn Title="Deliveries" MinWidth="260px">
+                    <div style="display: flex; flex-wrap: wrap; gap: 4px;">
+                        @if (!context.Deliveries.Any())
+                        {
+                            <span style="color: var(--neutral-foreground-hint);">No targets</span>
+                        }
+                        @foreach (var delivery in context.Deliveries)
+                        {
+                            <span title="@(delivery.Error ?? delivery.TargetUrl)">
+                                <FluentBadge Appearance="Appearance.Lightweight"
+                                             BackgroundColor="@(delivery.Success ? "#107c10" : "#d83b01")"
+                                             Color="white">
+                                    @GetTargetHost(delivery.TargetUrl) @(delivery.StatusCode?.ToString() ?? (delivery.Success ? "OK" : "failed"))
+                                </FluentBadge>
+                            </span>
+                        }
+                    </div>
+                </TemplateColumn>
+            </FluentDataGrid>
+        }
+    </FluentStack>
+</FluentStack>
+
+@code {
+    private string? _projectId;
+    private string? _projectName;
+    private string? _hubId;
+    private string? _region;
+    private string? _errorMessage;
+    private string? _successMessage;
+
+    private bool _isLoadingModels;
+    private List<RevitModel> _availableModels = new();
+    private string? _selectedLineageUrn;
+    private RevitWebhookMode _mode = RevitWebhookMode.Publish;
+    private List<TargetDraft> _targets = new();
+    private bool _isSubscribing;
+    private HashSet<string> _unsubscribingIds = new();
+
+    private List<RevitWebhookSubscription> _subscriptions = new();
+    private List<RevitWebhookEvent> _events = new();
+    private System.Threading.Timer? _pollingTimer;
+
+    private class RevitModel
+    {
+        public string ModelName { get; set; } = string.Empty;
+        // Data Management item id, which is the model's lineage URN.
+        public string LineageUrn { get; set; } = string.Empty;
+    }
+
+    private class TargetDraft
+    {
+        public string? Url { get; set; }
+        public string? Secret { get; set; }
+        public bool LinkAdded { get; set; } = true;
+        public bool LinkRemoved { get; set; } = true;
+    }
+
+    protected override async Task OnInitializedAsync()
+    {
+        if (!UserSession.IsAuthenticated)
+        {
+            NavigationManager.NavigateTo("/signin");
+            return;
+        }
+
+        var selected = await SelectedProjectService.GetSelectedProjectAsync(UserSession.UserId ?? string.Empty);
+        if (selected == null)
+        {
+            NavigationManager.NavigateTo("/projects");
+            return;
+        }
+
+        _projectId = selected.ProjectId;
+        _projectName = selected.ProjectName;
+        _hubId = selected.HubId;
+        _region = selected.Region;
+
+        RefreshSubscriptionsAndEvents();
+
+        // Poll the store every 5 seconds so processed callbacks show up without a page reload
+        _pollingTimer = new System.Threading.Timer(async _ =>
+        {
+            await PollStore();
+        }, null, TimeSpan.FromSeconds(5), TimeSpan.FromSeconds(5));
+
+        await LoadAvailableModels();
+    }
+
+    public void Dispose()
+    {
+        _pollingTimer?.Dispose();
+    }
+
+    private async Task PollStore()
+    {
+        try
+        {
+            await InvokeAsync(() =>
+            {
+                RefreshSubscriptionsAndEvents();
+                StateHasChanged();
+            });
+        }
+        catch (ObjectDisposedException)
+        {
+            // The circuit went away between ticks
+        }
+    }
+
+    private void RefreshSubscriptionsAndEvents()
+    {
+        _subscriptions = RevitWebhookStore.GetSubscriptions(_projectId)
+            .OrderByDescending(s => s.CreatedAt)
+            .ToList();
+
+        var subscriptionIds = _subscriptions.Select(s => s.Id).ToHashSet();
+        _events = RevitWebhookStore.GetEvents()
+            .Where(e => subscriptionIds.Contains(e.SubscriptionId))
+            .OrderByDescending(e => e.Timestamp)
+            .ToList();
+    }
+
+    private async Task LoadAvailableModels()
+    {
+        try
+        {
+            _isLoadingModels = true;
+            _availableModels = new List<RevitModel>();
+            StateHasChanged();
+
+            var folders = await DataManagementClient.GetProjectTopFoldersAsync(
+                accessToken: UserSession.AccessToken,
+                hubId: _hubId!,
+                projectId: _projectId!);
+
+            if (folders.Data != null)
+            {
+                foreach (var folder in folders.Data)
+                {
+                    await FindCloudModels(folder.Id ?? string.Empty);
+                }
+            }
+
+            _availableModels = _availableModels.OrderBy(m => m.ModelName).ToList();
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error loading Revit models: {ex.Message}";
+        }
+        finally
+        {
+            _isLoadingModels = false;
+            StateHasChanged();
+        }
+    }
+
+    private async Task FindCloudModels(string folderId)
+    {
+        try
+        {
+            var contents = await DataManagementClient.GetFolderContentsAsync(
+                accessToken: UserSession.AccessToken,
+                projectId: _projectId!,
+                folderId: folderId);
+
+            if (contents.Data == null)
+            {
+                return;
+            }
+
+            var versionDetailsDict = new Dictionary<string, VersionData>();
+            if (contents.Included != null)
+            {
+                foreach (var includedItem in contents.Included)
+                {
+                    if (includedItem is VersionData versionData && versionData.Id != null)
+                    {
+                        versionDetailsDict[versionData.Id] = versionData;
+                    }
+                }
+            }
+
+            foreach (var item in contents.Data)
+            {
+                if (item is FolderData folderData)
+                {
+                    await FindCloudModels(folderData.Id ?? string.Empty);
+                }
+                else if (item is ItemData itemData)
+                {
+                    var displayName = itemData.Attributes?.DisplayName ?? "Unknown";
+                    if (!displayName.EndsWith(".rvt", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    // Only Revit Cloud Worksharing models emit adsk.c4r events
+                    var versionId = itemData.Relationships?.Tip?.Data?.Id ?? string.Empty;
+                    if (!string.IsNullOrEmpty(versionId)
+                        && versionDetailsDict.TryGetValue(versionId, out var tipVersion)
+                        && IsCloudModel(tipVersion))
+                    {
+                        _availableModels.Add(new RevitModel
+                        {
+                            ModelName = displayName,
+                            LineageUrn = itemData.Id ?? string.Empty
+                        });
+                    }
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Console.WriteLine($"Error finding models in folder {folderId}: {ex.Message}");
+        }
+    }
+
+    private static bool IsCloudModel(VersionData versionData)
+    {
+        var extensionType = versionData.Attributes?.Extension?.Type?.ToString() ?? string.Empty;
+        return extensionType.Equals("versions:autodesk.bim360:C4RModel", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private void AddTarget()
+    {
+        _targets.Add(new TargetDraft());
+    }
+
+    private void AddDemoReceiverTarget()
+    {
+        _targets.Add(new TargetDraft
+        {
+            Url = $"{NavigationManager.BaseUri.TrimEnd('/')}/api/revit-webhooks/demo-receiver"
+        });
+    }
+
+    private async Task Subscribe()
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        var model = _availableModels.FirstOrDefault(m => m.LineageUrn == _selectedLineageUrn);
+        if (model == null)
+        {
+            _errorMessage = "Select a Revit Cloud Worksharing model first.";
+            return;
+        }
+
+        var targets = new List<OutgoingWebhookTarget>();
+        foreach (var draft in _targets.Where(t => !string.IsNullOrWhiteSpace(t.Url)))
+        {
+            var url = draft.Url!.Trim();
+            if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+            {
+                _errorMessage = $"\"{url}\" is not a valid http(s) URL.";
+                return;
+            }
+
+            var eventTypes = new List<string>();
+            if (draft.LinkAdded) eventTypes.Add(RevitWebhookEventTypes.LinkAdded);
+            if (draft.LinkRemoved) eventTypes.Add(RevitWebhookEventTypes.LinkRemoved);
+            if (!eventTypes.Any())
+            {
+                _errorMessage = $"Select at least one event type for {url}.";
+                return;
+            }
+
+            targets.Add(new OutgoingWebhookTarget
+            {
+                Url = url,
+                Secret = string.IsNullOrWhiteSpace(draft.Secret) ? null : draft.Secret.Trim(),
+                EventTypes = eventTypes
+            });
+        }
+
+        try
+        {
+            _isSubscribing = true;
+            StateHasChanged();
+
+            var subscription = await RevitWebhookService.SubscribeAsync(
+                UserSession.UserId ?? string.Empty,
+                _projectId!,
+                _hubId!,
+                _region,
+                model.ModelName,
+                model.LineageUrn,
+                _mode,
+                targets);
+
+            _successMessage = $"Subscribed {subscription.ModelName} at baseline version {subscription.BaselineVersion}.";
+            _selectedLineageUrn = null;
+            _targets = new List<TargetDraft>();
+            RefreshSubscriptionsAndEvents();
+        }
+        catch (InvalidOperationException ex)
+        {
+            _errorMessage = ex.Message;
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error creating the subscription: {ex.Message}";
+        }
+        finally
+        {
+            _isSubscribing = false;
+        }
+    }
+
+    private async Task Unsubscribe(RevitWebhookSubscription subscription)
+    {
+        _errorMessage = null;
+        _successMessage = null;
+
+        try
+        {
+            _unsubscribingIds.Add(subscription.Id);
+            await RevitWebhookService.UnsubscribeAsync(subscription.Id);
+            _successMessage = $"Unsubscribed {subscription.ModelName}.";
+        }
+        catch (Exception ex)
+        {
+            _errorMessage = $"Error removing the subscription: {ex.Message}";
+        }
+        finally
+        {
+            _unsubscribingIds.Remove(subscription.Id);
+            RefreshSubscriptionsAndEvents();
+        }
+    }
+
+    private string GetModelName(string subscriptionId) =>
+        _subscriptions.FirstOrDefault(s => s.Id == subscriptionId)?.ModelName ?? "Unknown";
+
+    private static string GetTargetHost(string targetUrl) =>
+        Uri.TryCreate(targetUrl, UriKind.Absolute, out var uri) ? uri.Host : targetUrl;
+}

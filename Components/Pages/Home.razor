@@ -75,6 +75,21 @@
 
         <FluentCard Style="max-width: 400px; padding: 24px;">
             <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+                <FluentIcon Value="@(new Icons.Regular.Size48.Alert())" Color="Color.Accent" />
+                <h3>Revit Webhooks</h3>
+                <p style="color: var(--neutral-foreground-hint);">
+                    Get notified when Revit links are added or removed using Webhooks and the AEC Data Model API.
+                </p>
+                <FluentButton Appearance="Appearance.Accent"
+                              IconStart="@(new Icons.Regular.Size20.Alert())"
+                             OnClick="@(() => NavigationManager.NavigateTo("/revit-webhooks"))">
+                    Revit Webhooks
+                </FluentButton>
+            </FluentStack>
+        </FluentCard>
+
+        <FluentCard Style="max-width: 400px; padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
                 <FluentIcon Value="@(new Icons.Regular.Size48.ChatMultiple())" Color="Color.Accent" />
                 <h3>Assistants</h3>
                 <p style="color: var(--neutral-foreground-hint);">
