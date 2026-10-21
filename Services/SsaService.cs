@@ -275,15 +275,14 @@ public class SsaService : ISsaService
             accessToken: accessToken);
 
         _logger.LogInformation("Added SSA {Email} to project {ProjectId}", ssaEmail, accountProjectId);
-        return projectUser?.Id ?? string.Empty;
+        return projectUser?.Id ?? projectUser?.AutodeskId ?? string.Empty;
     }
 
-    public async Task RemoveSsaFromProjectAsync(string projectId, string projectUserId, string accessToken)
+    public async Task RemoveSsaFromProjectAsync(string projectId, string userId, string accessToken)
     {
-        if (string.IsNullOrWhiteSpace(projectUserId))
+        if (string.IsNullOrWhiteSpace(userId))
         {
-            _logger.LogWarning("No project user ID for SSA removal from project {ProjectId}; skipping.", projectId);
-            return;
+            throw new ArgumentException("A project user ID or Autodesk ID is required to remove the SSA from the project.", nameof(userId));
         }
 
         // Removing a project user must be done as the requesting user (3-legged), matching how the
@@ -292,21 +291,49 @@ public class SsaService : ISsaService
             ? projectId[2..]
             : projectId;
 
-        await _adminClient.RemoveProjectUserAsync(
-            projectId: accountProjectId,
-            userId: projectUserId,
-            accessToken: accessToken);
+        try
+        {
+            await _adminClient.RemoveProjectUserAsync(
+                projectId: accountProjectId,
+                userId: userId,
+                accessToken: accessToken);
+        }
+        catch (Exception ex) when (IsNotFound(ex))
+        {
+            _logger.LogWarning("Project user {UserId} not found in project {ProjectId}; treating as already removed.", userId, accountProjectId);
+            return;
+        }
 
-        _logger.LogInformation("Removed project user {ProjectUserId} from project {ProjectId}", projectUserId, accountProjectId);
+        _logger.LogInformation("Removed project user {UserId} from project {ProjectId}", userId, accountProjectId);
+    }
+
+    public async Task DeprovisionSsaAsync(string projectId, string ssaId, string? projectUserId, string accessToken)
+    {
+        if (string.IsNullOrWhiteSpace(ssaId))
+        {
+            throw new ArgumentException("An SSA ID is required to deprovision the SSA.", nameof(ssaId));
+        }
+
+        // The robot user must leave the project before its SSA is deleted. If removal fails, the
+        // exception propagates and the SSA is left intact so the delete can be retried.
+        await RemoveSsaFromProjectAsync(projectId, ResolveProjectUserId(projectUserId, ssaId), accessToken);
+        await DeleteSsaAsync(ssaId);
     }
 
     public async Task DeleteSsaAsync(string ssaId)
     {
         var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
 
-        await _accountApi.DeleteServiceAccountAsync(
-            serviceAccountId: ssaId,
-            accessToken: token);
+        try
+        {
+            await _accountApi.DeleteServiceAccountAsync(
+                serviceAccountId: ssaId,
+                accessToken: token);
+        }
+        catch (Exception ex) when (IsNotFound(ex))
+        {
+            _logger.LogWarning("SSA {SsaId} not found; treating as already deleted.", ssaId);
+        }
 
         await _keysFileLock.WaitAsync();
         try
@@ -322,6 +349,33 @@ public class SsaService : ISsaService
         }
 
         _logger.LogInformation("Deleted SSA {SsaId}", ssaId);
+    }
+
+    // The ACC "remove project user" endpoint accepts either the ACC project user ID or the user's
+    // Autodesk ID; an SSA's ID is its Autodesk ID, so it is the fallback for agents without one.
+    internal static string ResolveProjectUserId(string? projectUserId, string ssaId) =>
+        string.IsNullOrWhiteSpace(projectUserId) ? ssaId : projectUserId;
+
+    // True when the exception (or its inner exception) carries a 404 Not Found or 410 Gone status.
+    internal static bool IsNotFound(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var status = current switch
+            {
+                Autodesk.Construction.AccountAdmin.ServiceApiException e => e.HttpResponseMessage?.StatusCode,
+                Autodesk.SecureServiceAccount.ServiceApiException e => e.HttpResponseMessage?.StatusCode,
+                HttpRequestException e => e.StatusCode,
+                _ => null,
+            };
+
+            if (status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Gone)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string BuildJwtAssertion(
