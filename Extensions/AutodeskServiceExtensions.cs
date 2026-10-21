@@ -52,6 +52,9 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<ISelectedProjectService, SelectedProjectService>();
         services.AddSingleton<IRevitWebhookTokenService, RevitWebhookTokenService>();
         services.AddSingleton<IRevitWebhookStore, RevitWebhookStore>();
+        services.AddSingleton<RevitWebhookQueue>();
+        services.AddSingleton<IRevitWebhookDispatcher, RevitWebhookDispatcher>();
+        services.AddHostedService<RevitWebhookProcessor>();
         // SsaService depends on scoped IAPSAuthenticationService + AdminClient, so it must be scoped too.
         services.AddScoped<ISsaService, SsaService>();
 
