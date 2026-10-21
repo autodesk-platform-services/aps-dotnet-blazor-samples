@@ -11,15 +11,13 @@ public class AgentChatServiceTests : IClassFixture<TempWorkingDirectoryFixture>
 {
     public AgentChatServiceTests(TempWorkingDirectoryFixture _) { }
 
-    private static BimManagerAssistantTools NewTools() =>
-        new(null!, null!, null!, null!, null!, null!, null!);
-
     private static AgentChatService NewService(IAgentConversationService conversationService) =>
         new(
             chatClient: null!,
             agentRegistry: new FakeAgentRegistryService(),
             toolCatalog: null!,
-            bimManagerAssistantTools: NewTools(),
+            toolContext: new AgentToolContext(null!, null!),
+            services: null!,
             conversationService: conversationService);
 
     private sealed class FakeAgentRegistryService : IAgentRegistryService

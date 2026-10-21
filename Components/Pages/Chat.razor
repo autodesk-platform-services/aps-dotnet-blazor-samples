@@ -495,12 +495,30 @@
                     <div class="chat-quick-actions">
                         @if (ReadOnlyReason == null)
                         {
-                            <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
-                                Find unpublished models
-                            </span>
-                            <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
-                                List Revit models
-                            </span>
+                            @if (AgentHasTool("list-unpublished-models"))
+                            {
+                                <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List unpublished models in this project"))'>
+                                    Find unpublished models
+                                </span>
+                            }
+                            @if (AgentHasTool("list-revit-models"))
+                            {
+                                <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the Revit models in this project"))'>
+                                    List Revit models
+                                </span>
+                            }
+                            @if (AgentHasTool("search-issues"))
+                            {
+                                <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("List the open issues in this project"))'>
+                                    Show open issues
+                                </span>
+                            }
+                            @if (AgentHasTool("find-project-users"))
+                            {
+                                <span class="chat-quick-action-chip" @onclick='@(() => SetQuickPrompt("Check whether a user is in this project"))'>
+                                    Find a project user
+                                </span>
+                            }
                             @foreach (var agent in MentionableAgents)
                             {
                                 var handle = AssistantMentions.ToHandle(agent.AgentName);
@@ -928,6 +946,9 @@
         var separator = _inputText.Length == 0 || char.IsWhiteSpace(_inputText[^1]) ? string.Empty : " ";
         _inputText = $"{_inputText}{separator}@{handle} ";
     }
+
+    private bool AgentHasTool(string toolId) =>
+        _agentsById.GetValueOrDefault(_conversation?.AgentId ?? string.Empty)?.EnabledToolIds.Contains(toolId, StringComparer.OrdinalIgnoreCase) == true;
 
     private void ClearTaskFilter()
     {

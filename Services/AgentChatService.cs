@@ -11,7 +11,8 @@ public class AgentChatService : IAgentChatService
     private readonly IChatClient _chatClient;
     private readonly IAgentRegistryService _agentRegistry;
     private readonly IToolCatalogService _toolCatalog;
-    private readonly BimManagerAssistantTools _bimManagerAssistantTools;
+    private readonly AgentToolContext _toolContext;
+    private readonly IServiceProvider _services;
     private readonly IAgentConversationService _conversationService;
     private readonly Dictionary<string, AIAgent> _agents = new();
     private string? _currentConversationId;
@@ -20,29 +21,31 @@ public class AgentChatService : IAgentChatService
         IChatClient chatClient,
         IAgentRegistryService agentRegistry,
         IToolCatalogService toolCatalog,
-        BimManagerAssistantTools bimManagerAssistantTools,
+        AgentToolContext toolContext,
+        IServiceProvider services,
         IAgentConversationService conversationService)
     {
         _chatClient = chatClient;
         _agentRegistry = agentRegistry;
         _toolCatalog = toolCatalog;
-        _bimManagerAssistantTools = bimManagerAssistantTools;
+        _toolContext = toolContext;
+        _services = services;
         _conversationService = conversationService;
     }
 
     public void SetHubContext(string hubId)
     {
-        _bimManagerAssistantTools.HubId = hubId;
+        _toolContext.HubId = hubId;
     }
 
     public void SetProjectContext(string projectId)
     {
-        _bimManagerAssistantTools.ProjectId = projectId;
+        _toolContext.ProjectId = projectId;
     }
 
     public void SetConversationContext(string conversationId)
     {
-        _bimManagerAssistantTools.ConversationId = conversationId;
+        _toolContext.ConversationId = conversationId;
         _currentConversationId = conversationId;
     }
 
@@ -64,7 +67,8 @@ public class AgentChatService : IAgentChatService
             ?? throw new InvalidOperationException($"Assistant '{agentId}' not found.");
 
         // Tools act on behalf of whichever assistant answers this turn.
-        _bimManagerAssistantTools.AgentId = agentId;
+        _toolContext.AgentId = agentId;
+        _toolContext.SsaId = def.SsaId;
         var agent = GetOrCreateAgent(def);
 
         var names = new Dictionary<string, string>();
@@ -127,7 +131,7 @@ public class AgentChatService : IAgentChatService
             agent = _chatClient.AsAIAgent(
                 instructions: def.InstructionsText,
                 name: def.AgentName,
-                tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _bimManagerAssistantTools).Cast<AITool>().ToArray());
+                tools: _toolCatalog.GetAIFunctions(def.EnabledToolIds, _services).Cast<AITool>().ToArray());
             _agents[def.AgentId] = agent;
         }
 

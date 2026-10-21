@@ -15,7 +15,7 @@ A Blazor Server web application demonstrating how to use [Autodesk Platform Serv
 - **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
 - **Create Sheets** – Batch-create sheets in Revit cloud models.
 - **View Models** – Select a Revit cloud model and render it interactively in the browser using the APS Viewer with Blazor JavaScript Interoperability.
-- **AI Assistants** – Chat with role-based AI assistants (one assistant per Forma project role) to automate Revit model management tasks. Pick an assistant when starting a conversation and `@mention` another assistant to bring it into the conversation. Assistants can list models, check publish status, and publish cloud-worksharing models through natural language conversation. Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
+- **AI Assistants** – Chat with role-based AI assistants (one assistant per Forma project role) to automate Revit model management tasks. Pick an assistant when starting a conversation and `@mention` another assistant to bring it into the conversation. Project admins create one assistant per project role and choose which tool modules it can use: **Revit Models**, **Folders**, **Project Users** and **Issues**. Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
 
 The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their hubs of Forma for Construction and projects through a folder explorer, configure automation jobs, and track their real-time status.
 
@@ -36,7 +36,7 @@ The app uses 3-legged OAuth to authenticate users via their Autodesk account, th
    - **Manage Revit Links** – select a project, build a link matrix between models, and apply it.
    - **Create Sheets** – select a project and Revit model, define the sheet list, and submit.
    - **View Models** – select a project, then select a .rvt model from the list to render it in the APS Viewer.
-   - **AI Assistants** – select a project, start a conversation with one of the assistants available for your project roles (or continue an existing one), `@mention` another assistant (e.g. `@bimmanagerassistant`) to route a message to it, and interact through natural language to list models, check publish status, or publish cloud-worksharing models.
+   - **AI Assistants** – select a project, start a conversation with one of the assistants available for your project roles (or continue an existing one), `@mention` another assistant (e.g. `@bimmanagerassistant`) to route a message to it, and interact through natural language using the tools the assistant was given (grouped by module).
 3. For the automation workflows (Create Revit Models, Manage Revit Links, Create Sheets, and AI Assistants), track job progress on the corresponding tracking page or task panel; results are updated in real time. **View Models** is read-only and has no tracking page.
 
 https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
@@ -59,7 +59,16 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 - **[Ollama](https://ollama.com/)** installed and running locally (or accessible remote endpoint) with a language model that supports function calling (e.g., `llama3.1:8b`)
 - **[ngrok](https://ngrok.com/)** (or similar tunneling tool) for exposing webhook endpoints to receive publish completion callbacks
 
-> **Note:** In the AI Assistants feature, users see the assistants configured for their project roles. Assistants are configured by Project Administrators under **Settings → Assistants**. The LLM must support function calling for the assistant's tools to work properly.
+> **Note (AI Assistants):** Creating assistants requires the Project Admin role on the selected project. Users chat only with the assistants created for their own project roles. The LLM must support function calling for the assistant's tools to work properly.
+
+#### Agent tool modules
+
+Every agent action runs as the agent's own **service account** (SSA), which is created and added to the project when the agent is created, so ACC records the agent, not the signed-in user, as the author of its changes. Some modules need extra setup:
+
+- **Revit Models** – listing and publishing need the service account to have access to the project folders. Linked Revit files are returned only for models published after 2025-02-07, and only links the service account can download.
+- **Folders** – new folders are created under "Project Files" unless a parent folder is given. The service account needs Edit or Manage permission on the parent folder. Existing folders are reused, so repeating a request does not create duplicates.
+- **Project Users** – hub user search uses a 2-legged token with `account:read`, so the APS app must be provisioned as a **custom integration** in the ACC account. Adding users and changing their role or company needs the agent's service account to have **project admin** access (grant it the Project Administration product).
+- **Issues** – using Issues through a service account needs a **Forma Build** subscription on that service account. The ACC Issues API has no delete: agents can close an issue by setting its status to `closed`, but deleting it must be done in the ACC UI.
 
 ---
 
@@ -131,6 +140,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - Job status for Create Revit Models, Manage Revit Links, and Create Sheets is stored in-memory; restarting the application clears pending job history.
 - AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This is a **demo-only file store** — all data is lost if the files are deleted, and it is not suitable for concurrent multi-user production deployments. Production forks should replace `AgentConversationService` with a database-backed implementation.
 - In the AI Assistants feature, users see the assistants configured for their project roles. Assistants are configured by Project Administrators under **Settings → Assistants**.
+- AI Assistants can't delete issues, delete or rename folders, manage folder permissions, or remove project users.
 - The Automation API activity must already exist and be published before running the sample.
 - Ollama must be running and accessible for the AI Assistants feature to function.
 
