@@ -66,7 +66,7 @@
                           IconStart="@(new Icons.Regular.Size20.Delete())"
                           Disabled="@_deletingAllSsas"
                           OnClick="DeleteAllSsaAccounts"
-                          Title="TEMPORARY: for every SSA tracked by an agent in this project, removes its robot user from the project, then deletes the SSA and the agent. Untracked SSAs are skipped.">
+                          Title="TEMPORARY: deletes every SSA account on this app. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
                 @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
             </FluentButton>
         </FluentStack>
@@ -589,8 +589,8 @@
     }
 
     // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
-    // Only SSAs tracked by an agent in this project are deleted (their robot user is removed from
-    // the project first); untracked SSAs are skipped because their project is unknown.
+    // Every SSA on the app is deleted. Robot users are removed from the project only for SSAs tracked
+    // by an agent in this project; untracked SSAs are deleted directly because their project is unknown.
     private async Task DeleteAllSsaAccounts()
     {
         _deletingAllSsas = true;
@@ -603,26 +603,27 @@
             var ssaIds = await SsaService.GetAllSsaIdsAsync();
             var deleted = 0;
             var failed = 0;
-            var skipped = 0;
+            var untracked = 0;
 
             foreach (var ssaId in ssaIds)
             {
-                var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
-                if (agent is null)
-                {
-                    skipped++;
-                    Console.WriteLine($"Skipped SSA {ssaId}: not tracked in this project, robot user may still be a member");
-                    continue;
-                }
-
                 try
                 {
-                    await SsaService.DeprovisionSsaAsync(
-                        agent.ProjectId,
-                        agent.SsaId,
-                        agent.ProjectUserId,
-                        UserSession.AccessToken ?? string.Empty);
-                    await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                    var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
+                    if (agent is null)
+                    {
+                        await SsaService.DeleteSsaAsync(ssaId);
+                        untracked++;
+                    }
+                    else
+                    {
+                        await SsaService.DeprovisionSsaAsync(
+                            agent.ProjectId,
+                            agent.SsaId,
+                            agent.ProjectUserId,
+                            UserSession.AccessToken ?? string.Empty);
+                        await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                    }
                     deleted++;
                 }
                 catch (Exception ex)
@@ -635,7 +636,7 @@
             _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
             RefreshAvailableRoles();
 
-            _infoMessage = $"Deleted {deleted} SSA account(s), {failed} failed, {skipped} skipped (not tracked in this project).";
+            _infoMessage = $"Deleted {deleted} SSA account(s) ({untracked} without project removal), {failed} failed.";
         }
         catch (Exception ex)
         {
