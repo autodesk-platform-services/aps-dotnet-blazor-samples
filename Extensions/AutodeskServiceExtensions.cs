@@ -32,6 +32,7 @@ public static class AutodeskServiceExtensions
         services.AddConstructionAccountAdmin(configuration);
 
         services.AddScoped<IAccLinkedFilesService, AccLinkedFilesService>();
+        services.AddScoped<IAecDataModelService, AecDataModelService>();
         services.AddScoped<INamingStandardsService, NamingStandardsService>();
         services.AddScoped<IRevitAutomationService, RevitAutomationService>();
         services.AddScoped<RevitAutomationTools>();
