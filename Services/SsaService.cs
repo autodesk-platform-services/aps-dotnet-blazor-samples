@@ -257,8 +257,9 @@ public class SsaService : ISsaService
             CompanyId = string.IsNullOrEmpty(companyId) ? null : companyId,
             RoleIds = roleIds,
             // Project Administration grants admin access to that module; every other selected
-            // product grants standard member access.
-            Products = ProjectUserService.BuildProductPayloads(productKeys),
+            // product grants standard member access. With no product selected, Docs (Data
+            // Management) is sent so the SSA always gets member access to it.
+            Products = ProjectUserService.BuildProductPayloads(ResolveProductKeys(productKeys)),
         };
 
         var projectUser = await _adminClient.AssignProjectUserAsync(
@@ -347,6 +348,19 @@ public class SsaService : ISsaService
     // Autodesk ID; an SSA's ID is its Autodesk ID, so it is the fallback for agents without one.
     internal static string ResolveProjectUserId(string? projectUserId, string ssaId) =>
         string.IsNullOrWhiteSpace(projectUserId) ? ssaId : projectUserId;
+
+    // Trimmed, non-blank product keys; falls back to "docs" when none remain so the SSA is never
+    // assigned with an empty products list.
+    internal static List<string> ResolveProductKeys(IEnumerable<string>? productKeys)
+    {
+        var keys = productKeys?.Where(k => !string.IsNullOrWhiteSpace(k)).Select(k => k.Trim()).ToList() ?? [];
+        if (keys.Count == 0)
+        {
+            keys.Add("docs");
+        }
+
+        return keys;
+    }
 
     // True when the exception (or its inner exception) carries a 404 Not Found or 410 Gone status.
     internal static bool IsNotFound(Exception ex)
