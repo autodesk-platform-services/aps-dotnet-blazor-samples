@@ -256,17 +256,9 @@ public class SsaService : ISsaService
             Email = ssaEmail,
             CompanyId = string.IsNullOrEmpty(companyId) ? null : companyId,
             RoleIds = roleIds,
-            Products = productKeys
-                .Select(k => new ProjectUserPayloadProducts
-                {
-                    Key = Enum.Parse<ProductKeys>(k, ignoreCase: true),
-                    // Project Administration grants admin access to that module; every other
-                    // selected product grants standard member access.
-                    Access = string.Equals(k, "projectAdministration", StringComparison.OrdinalIgnoreCase)
-                        ? ProductAccess.Administrator
-                        : ProductAccess.Member,
-                })
-                .ToList(),
+            // Project Administration grants admin access to that module; every other selected
+            // product grants standard member access.
+            Products = ProjectUserService.BuildProductPayloads(productKeys),
         };
 
         var projectUser = await _adminClient.AssignProjectUserAsync(
