@@ -1,3 +1,4 @@
+using System.Text.Json.Nodes;
 using ApsSamples.Models;
 using ApsSamples.Services;
 using Microsoft.Extensions.Logging.Abstractions;
@@ -113,6 +114,42 @@ public class RevitWebhookStoreTests : IClassFixture<TempWorkingDirectoryFixture>
         Assert.Equal("https://example.com/hook", target.Url);
         Assert.Equal("s3cret", target.Secret);
         Assert.Equal([RevitWebhookEventTypes.LinkAdded], target.EventTypes);
+    }
+
+    [Fact]
+    public async Task UpsertAsync_AecProjectId_PersistsAcrossInstances()
+    {
+        var subscription = NewSubscription();
+        subscription.AecProjectId = "aec-project-1";
+        await NewStore().UpsertAsync(subscription);
+
+        var reloaded = NewStore().Get(subscription.Id);
+
+        Assert.NotNull(reloaded);
+        Assert.Equal("aec-project-1", reloaded.AecProjectId);
+    }
+
+    [Fact]
+    public async Task NewInstance_SubscriptionSavedWithoutAecProjectId_LoadsAsNull()
+    {
+        var subscription = NewSubscription();
+        subscription.AecProjectId = "aec-project-1";
+        await NewStore().UpsertAsync(subscription);
+
+        // Rewrite the file as if it had been saved before AecProjectId existed.
+        var path = Path.Combine(_fixture.TempPath, "Data", "revit-webhook-subscriptions.json");
+        var items = JsonNode.Parse(await File.ReadAllTextAsync(path))!.AsArray();
+        foreach (var item in items)
+        {
+            item!.AsObject().Remove("aecProjectId");
+        }
+        await File.WriteAllTextAsync(path, items.ToJsonString());
+
+        var reloaded = NewStore().Get(subscription.Id);
+
+        Assert.NotNull(reloaded);
+        Assert.Null(reloaded.AecProjectId);
+        Assert.Equal(subscription.ElementGroupId, reloaded.ElementGroupId);
     }
 
     [Fact]

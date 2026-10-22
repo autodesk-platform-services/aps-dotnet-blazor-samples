@@ -30,6 +30,8 @@ public class RevitWebhookSubscription
     public RevitWebhookMode Mode { get; set; }
     public string HookId { get; set; } = string.Empty;
     public string ElementGroupId { get; set; } = string.Empty;
+    // AEC Data Model project id resolved from ProjectId; null on subscriptions created before it was stored.
+    public string? AecProjectId { get; set; }
     // Version the diff starts from. Publish mode advances it after every processed version;
     // Sync mode keeps it fixed so WIP changes are compared against the last published state.
     public int BaselineVersion { get; set; }
