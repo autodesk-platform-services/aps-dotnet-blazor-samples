@@ -1,12 +1,11 @@
 using System.Collections.Concurrent;
 using ApsSamples.Models;
-using Microsoft.Extensions.Options;
 
 namespace ApsSamples.Services;
 
 /// <summary>
-/// Processes queued Revit webhook work: waits for the AEC Data Model extraction of the new version,
-/// diffs it against the subscription's baseline, classifies link changes, delivers them to the
+/// Processes queued Revit webhook work: waits for the AEC Data Model element group to reach a new
+/// version, diffs it against the subscription's baseline, classifies link changes, delivers them to the
 /// outgoing targets, and records the result. Each work item runs on its own task; work for the same
 /// subscription is serialized.
 /// </summary>
@@ -16,16 +15,9 @@ public class RevitWebhookProcessor(
     IRevitWebhookTokenService tokenService,
     IRevitWebhookDispatcher dispatcher,
     IServiceScopeFactory scopeFactory,
-    IOptions<RevitWebhookOptions> options,
     ILogger<RevitWebhookProcessor> logger) : BackgroundService
 {
     private readonly ConcurrentDictionary<string, SemaphoreSlim> _subscriptionLocks = new();
-    // Per subscription: when the extraction status that the last completed run processed was read.
-    // Work enqueued before that moment is already covered by that run (at-tip status reflects any
-    // version published before the read), so it is skipped instead of waiting for a version that
-    // will never come.
-    private readonly ConcurrentDictionary<string, DateTime> _coveredUntil = new();
-
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await ResetInterruptedSubscriptionsAsync();
@@ -44,6 +36,7 @@ public class RevitWebhookProcessor(
 
     internal async Task ProcessAsync(RevitWebhookWorkItem item, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Received {Source} work for subscription {SubscriptionId}", item.Source, item.SubscriptionId);
         var gate = _subscriptionLocks.GetOrAdd(item.SubscriptionId, _ => new SemaphoreSlim(1, 1));
         try
         {
@@ -61,12 +54,6 @@ public class RevitWebhookProcessor(
             if (subscription == null)
             {
                 logger.LogInformation("Skipping {Source} work for removed subscription {SubscriptionId}", item.Source, item.SubscriptionId);
-                return;
-            }
-
-            if (_coveredUntil.TryGetValue(subscription.Id, out var coveredUntil) && item.EnqueuedAt < coveredUntil)
-            {
-                logger.LogInformation("Skipping {Source} work for {ModelName}: already covered by a previous run", item.Source, subscription.ModelName);
                 return;
             }
 
@@ -98,9 +85,7 @@ public class RevitWebhookProcessor(
 
     private async Task ProcessSubscriptionAsync(RevitWebhookSubscription subscription, string source, CancellationToken cancellationToken)
     {
-        // Publish compares against the last processed publish; Sync against the last processed sync,
-        // while still diffing from the published baseline.
-        var minimumVersion = subscription.Mode == RevitWebhookMode.Publish ? subscription.BaselineVersion : subscription.LastSeenVersion;
+        logger.LogInformation("{ModelName}: processing {Source} ({Mode})", subscription.ModelName, source, subscription.Mode);
 
         subscription.Status = RevitWebhookSubscriptionStatus.Processing;
         await PersistIfStillSubscribedAsync(subscription);
@@ -108,10 +93,10 @@ public class RevitWebhookProcessor(
         using var scope = scopeFactory.CreateScope();
         var aecDataModel = scope.ServiceProvider.GetRequiredService<IAecDataModelService>();
 
-        var (extraction, observedAt) = await WaitForExtractionAsync(aecDataModel, subscription, minimumVersion, cancellationToken);
-        if (extraction == null)
+        var elementGroup = await FindElementGroupAsync(aecDataModel, subscription, cancellationToken);
+        if (elementGroup?.VersionNumber is not int newVersion)
         {
-            var message = $"Timed out after {options.Value.ExtractionTimeoutMinutes} min waiting for the AEC Data Model extraction of a version newer than {minimumVersion}.";
+            const string message = "The AEC Data Model has no element group for this model.";
             logger.LogWarning("{ModelName}: {Message}", subscription.ModelName, message);
             subscription.Status = RevitWebhookSubscriptionStatus.Error;
             subscription.LastError = message;
@@ -119,16 +104,18 @@ public class RevitWebhookProcessor(
             return;
         }
 
-        var newVersion = extraction.VersionNumber!.Value;
-        if (!string.IsNullOrEmpty(extraction.ElementGroupId))
-        {
-            subscription.ElementGroupId = extraction.ElementGroupId;
-        }
+        subscription.ElementGroupId = elementGroup.Id;
 
-        var fromVersion = subscription.BaselineVersion;
+        // The element group's version is the latest published one. A publish event diffs against the
+        // previous version; a sync event diffs against the latest publish itself.
+        var fromVersion = subscription.Mode == RevitWebhookMode.Publish ? newVersion - 1 : newVersion;
+        logger.LogInformation("{ModelName}: latest AEC Data Model version is {Version}; diffing from version {From}",
+            subscription.ModelName, newVersion, fromVersion);
+
         var accessToken = await tokenService.GetAccessTokenAsync(subscription.UserId, cancellationToken);
         var diff = await aecDataModel.GetDiffAsync(accessToken, subscription.ElementGroupId, fromVersion, subscription.Region, cancellationToken);
         var changes = RevitLinkChangeClassifier.Classify(diff, subscription.KnownLinkElementIds);
+        logger.LogInformation("{ModelName}: classified {Count} link change(s)", subscription.ModelName, changes.Count);
 
         foreach (var change in changes)
         {
@@ -142,12 +129,22 @@ public class RevitWebhookProcessor(
             }
         }
 
+        // Sync notifications are deduplicated per published version.
+        if (subscription.Mode == RevitWebhookMode.Sync && subscription.BaselineVersion != newVersion)
+        {
+            subscription.NotifiedKeys.Clear();
+        }
+
         var toNotify = subscription.Mode == RevitWebhookMode.Sync
             ? changes.Where(c => !subscription.NotifiedKeys.Contains(NotifiedKey(c))).ToList()
             : changes.ToList();
 
+        logger.LogInformation("{ModelName}: delivering {Count} change(s) to {TargetCount} target(s)",
+            subscription.ModelName, toNotify.Count, subscription.Targets.Count);
+
         foreach (var change in toNotify)
         {
+            logger.LogInformation("{ModelName}: dispatching {EventType} for {FileName}", subscription.ModelName, change.EventType, change.FileName);
             var deliveries = await dispatcher.DispatchAsync(subscription, change, fromVersion, newVersion, source, cancellationToken);
             await store.AddEventAsync(new RevitWebhookEvent
             {
@@ -161,19 +158,14 @@ public class RevitWebhookProcessor(
             });
         }
 
-        if (subscription.Mode == RevitWebhookMode.Publish)
-        {
-            subscription.BaselineVersion = newVersion;
-            subscription.NotifiedKeys.Clear();
-        }
-        else
+        if (subscription.Mode == RevitWebhookMode.Sync)
         {
             subscription.NotifiedKeys.UnionWith(toNotify.Select(NotifiedKey));
         }
+        subscription.BaselineVersion = newVersion;
         subscription.LastSeenVersion = newVersion;
         subscription.Status = RevitWebhookSubscriptionStatus.Active;
         subscription.LastError = null;
-        _coveredUntil[subscription.Id] = observedAt;
 
         await PersistIfStillSubscribedAsync(subscription);
 
@@ -182,41 +174,28 @@ public class RevitWebhookProcessor(
             source, subscription.ModelName, fromVersion, newVersion, changes.Count, toNotify.Count);
     }
 
-    // Returns the extraction once it succeeded for a version newer than minimumVersion, together with
-    // the time the successful status was requested, or (null, _) on timeout.
-    private async Task<(AecExtractionStatus? Extraction, DateTime ObservedAt)> WaitForExtractionAsync(
-        IAecDataModelService aecDataModel, RevitWebhookSubscription subscription, int minimumVersion, CancellationToken cancellationToken)
+    private async Task<AecElementGroup?> FindElementGroupAsync(
+        IAecDataModelService aecDataModel, RevitWebhookSubscription subscription, CancellationToken cancellationToken)
     {
-        var pollInterval = TimeSpan.FromSeconds(Math.Max(0, options.Value.ExtractionPollSeconds));
-        var deadline = DateTime.UtcNow.AddMinutes(Math.Max(0, options.Value.ExtractionTimeoutMinutes));
+        var accessToken = await tokenService.GetAccessTokenAsync(subscription.UserId, cancellationToken);
 
-        while (true)
+        // Subscriptions created before the AEC project id was stored resolve it once.
+        if (string.IsNullOrEmpty(subscription.AecProjectId))
         {
-            var observedAt = DateTime.UtcNow;
-            // Fetched on every poll: the wait can outlive an access token, and the token service caches it.
-            var accessToken = await tokenService.GetAccessTokenAsync(subscription.UserId, cancellationToken);
-            var extraction = await aecDataModel.GetExtractionStatusAsync(
-                accessToken, subscription.LineageUrn, subscription.ProjectId, subscription.Region, cancellationToken);
-
-            if (extraction.IsSuccess && extraction.VersionNumber > minimumVersion)
-            {
-                return (extraction, observedAt);
-            }
-
-            if (string.Equals(extraction.Status, "FAILED", StringComparison.OrdinalIgnoreCase))
-            {
-                throw new InvalidOperationException($"The AEC Data Model extraction failed for {subscription.ModelName}.");
-            }
-
-            if (DateTime.UtcNow >= deadline)
-            {
-                return (null, observedAt);
-            }
-
-            logger.LogDebug("{ModelName}: extraction status {Status}, version {Version}; waiting for a version newer than {Minimum}",
-                subscription.ModelName, extraction.Status, extraction.VersionNumber, minimumVersion);
-            await Task.Delay(pollInterval, cancellationToken);
+            logger.LogInformation("{ModelName}: resolving the missing AEC project id", subscription.ModelName);
+            var aecProject = await aecDataModel.FindProjectAsync(accessToken, subscription.ProjectId, subscription.Region, cancellationToken)
+                ?? throw new InvalidOperationException($"Couldn't find the project of {subscription.ModelName} in the AEC Data Model.");
+            subscription.AecProjectId = aecProject.Id;
+            await PersistIfStillSubscribedAsync(subscription);
         }
+
+        var elementGroup = await aecDataModel.FindElementGroupAsync(
+            accessToken, subscription.AecProjectId, subscription.LineageUrn, subscription.Region, cancellationToken);
+        if (elementGroup != null)
+        {
+            subscription.ElementGroupId = elementGroup.Id;
+        }
+        return elementGroup;
     }
 
     // A subscription removed while its work was in flight must not be written back.

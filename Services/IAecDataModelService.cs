@@ -4,8 +4,13 @@ namespace ApsSamples.Services;
 
 public interface IAecDataModelService
 {
-    // Extraction status of the tip version of a model (fileUrn is the Data Management lineage URN).
-    Task<AecExtractionStatus> GetExtractionStatusAsync(string accessToken, string fileUrn, string accProjectId, string? region, CancellationToken cancellationToken = default);
+    // AEC DM project whose alternativeIdentifiers.dataManagementAPIProjectId matches the Data Management
+    // project id (with or without the "b." prefix), searched across every hub the user can see.
+    Task<AecProject?> FindProjectAsync(string accessToken, string dataManagementProjectId, string? region, CancellationToken cancellationToken = default);
+
+    // Element group of the AEC DM project whose alternativeIdentifiers.fileUrn matches the Data Management
+    // lineage URN; null until the model has been extracted.
+    Task<AecElementGroup?> FindElementGroupAsync(string accessToken, string aecProjectId, string lineageUrn, string? region, CancellationToken cancellationToken = default);
 
     // Ids of the RVT Links elements (Types and Instances) in the tip version of the element group.
     Task<IReadOnlyList<string>> GetLinkElementIdsAsync(string accessToken, string elementGroupId, string? region, CancellationToken cancellationToken = default);
@@ -15,7 +20,6 @@ public interface IAecDataModelService
     Task<JsonElement> GetDiffAsync(string accessToken, string elementGroupId, int startVersion, string? region, CancellationToken cancellationToken = default);
 }
 
-public record AecExtractionStatus(string? Status, string? ElementGroupId, int? VersionNumber)
-{
-    public bool IsSuccess => string.Equals(Status, "SUCCESS", StringComparison.OrdinalIgnoreCase);
-}
+public record AecProject(string Id, string Name, string HubId);
+
+public record AecElementGroup(string Id, string? Name, string? FileUrn, string? FileVersionUrn, int? VersionNumber);
