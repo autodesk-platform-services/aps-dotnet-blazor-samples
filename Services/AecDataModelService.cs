@@ -22,14 +22,73 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
     private const string LinkCategory = "RVT Links";
     private const string LinkFamilyName = "Linked Revit Model";
 
-    private const string ExtractionStatusQuery = """
-        query elementGroupExtractionStatusAtTip($fileUrn: ID!, $accProjectId: ID!) {
-          elementGroupExtractionStatusAtTip(fileUrn: $fileUrn, accProjectId: $accProjectId) {
-            status
-            details
-            elementGroup {
+    // The hubs → projects → elementGroupsByProject queries from issue #35, plus pagination.
+    private const string HubsQuery = """
+        query GetHubs($pagination: PaginationInput) {
+          hubs(pagination: $pagination) {
+            pagination {
+              cursor
+            }
+            results {
+              name
+              id
+            }
+          }
+        }
+        """;
+
+    private const string ProjectsQuery = """
+        query GetProjects($hubId: ID!, $pagination: PaginationInput) {
+          projects(hubId: $hubId, pagination: $pagination) {
+            pagination {
+              cursor
+            }
+            results {
               id
               name
+              alternativeIdentifiers {
+                dataManagementAPIProjectId
+              }
+            }
+          }
+        }
+        """;
+
+    private const string ElementGroupsQuery = """
+        query GetElementGroupsByProject($projectId: ID!, $filter: ElementGroupFilterInput, $pagination: PaginationInput) {
+          elementGroupsByProject(projectId: $projectId, filter: $filter, pagination: $pagination) {
+            pagination {
+              cursor
+            }
+            results {
+              name
+              id
+              alternativeIdentifiers {
+                fileUrn
+                fileVersionUrn
+              }
+              version {
+                versionNumber
+              }
+            }
+          }
+        }
+        """;
+
+    // Fallback when the fileUrn filter is rejected: page through every element group and match client-side.
+    private const string AllElementGroupsQuery = """
+        query GetElementGroupsByProject($projectId: ID!, $pagination: PaginationInput) {
+          elementGroupsByProject(projectId: $projectId, pagination: $pagination) {
+            pagination {
+              cursor
+            }
+            results {
+              name
+              id
+              alternativeIdentifiers {
+                fileUrn
+                fileVersionUrn
+              }
               version {
                 versionNumber
               }
@@ -125,30 +184,67 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
         }
         """;
 
-    public async Task<AecExtractionStatus> GetExtractionStatusAsync(string accessToken, string fileUrn, string accProjectId, string? region, CancellationToken cancellationToken = default)
+    public async Task<AecProject?> FindProjectAsync(string accessToken, string dataManagementProjectId, string? region, CancellationToken cancellationToken = default)
     {
-        var data = await PostAsync(accessToken, ExtractionStatusQuery, new
-        {
-            fileUrn,
-            accProjectId = EnsureProjectPrefix(accProjectId)
-        }, region, cancellationToken);
+        var wanted = StripProjectPrefix(dataManagementProjectId);
 
-        if (!TryGetObject(data, "elementGroupExtractionStatusAtTip", out var status))
-            return new AecExtractionStatus(null, null, null);
-
-        string? elementGroupId = null;
-        int? versionNumber = null;
-        if (TryGetObject(status, "elementGroup", out var elementGroup))
+        await foreach (var hub in PageAsync(accessToken, HubsQuery, "hubs", "results",
+            cursor => new { pagination = Pagination(cursor) }, region, cancellationToken))
         {
-            elementGroupId = GetString(elementGroup, "id");
-            if (TryGetObject(elementGroup, "version", out var version)
-                && version.TryGetProperty("versionNumber", out var number)
-                && number.ValueKind == JsonValueKind.Number
-                && number.TryGetInt32(out var parsed))
-                versionNumber = parsed;
+            if (GetString(hub, "id") is not { Length: > 0 } hubId)
+                continue;
+
+            await foreach (var project in PageAsync(accessToken, ProjectsQuery, "projects", "results",
+                cursor => new { hubId, pagination = Pagination(cursor) }, region, cancellationToken))
+            {
+                var dmProjectId = TryGetObject(project, "alternativeIdentifiers", out var identifiers)
+                    ? GetString(identifiers, "dataManagementAPIProjectId")
+                    : null;
+                if (dmProjectId is not null
+                    && string.Equals(StripProjectPrefix(dmProjectId), wanted, StringComparison.OrdinalIgnoreCase)
+                    && GetString(project, "id") is { Length: > 0 } id)
+                    return new AecProject(id, GetString(project, "name") ?? "", hubId);
+            }
         }
 
-        return new AecExtractionStatus(GetString(status, "status"), elementGroupId, versionNumber);
+        return null;
+    }
+
+    public async Task<AecElementGroup?> FindElementGroupAsync(string accessToken, string aecProjectId, string lineageUrn, string? region, CancellationToken cancellationToken = default)
+    {
+        var wanted = StripVersionSuffix(lineageUrn);
+
+        try
+        {
+            await foreach (var group in PageAsync(accessToken, ElementGroupsQuery, "elementGroupsByProject", "results",
+                cursor => new
+                {
+                    projectId = aecProjectId,
+                    filter = new { fileUrn = new[] { lineageUrn } },
+                    pagination = Pagination(cursor)
+                }, region, cancellationToken))
+            {
+                if (MatchElementGroup(group, wanted) is { } match)
+                    return match;
+            }
+            return null;
+        }
+        catch (InvalidOperationException ex) when (!cancellationToken.IsCancellationRequested)
+        {
+            logger.LogWarning(ex, "AEC DM rejected the fileUrn filter for project {ProjectId}; matching element groups client-side", aecProjectId);
+        }
+
+        await foreach (var group in PageAsync(accessToken, AllElementGroupsQuery, "elementGroupsByProject", "results",
+            cursor => new
+            {
+                projectId = aecProjectId,
+                pagination = Pagination(cursor)
+            }, region, cancellationToken))
+        {
+            if (MatchElementGroup(group, wanted) is { } match)
+                return match;
+        }
+        return null;
     }
 
     public async Task<IReadOnlyList<string>> GetLinkElementIdsAsync(string accessToken, string elementGroupId, string? region, CancellationToken cancellationToken = default)
@@ -301,9 +397,55 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
     private static object Pagination(string? cursor) =>
         cursor is null ? new { limit = PageLimit } : new { cursor, limit = PageLimit };
 
-    // Data Management project ids already carry the "b." prefix; AEC DM requires it.
-    private static string EnsureProjectPrefix(string projectId) =>
-        projectId.StartsWith("b.", StringComparison.Ordinal) ? projectId : $"b.{projectId}";
+    // Data Management project ids may or may not carry the "b." prefix; compare them without it.
+    private static string StripProjectPrefix(string projectId) =>
+        projectId.StartsWith("b.", StringComparison.OrdinalIgnoreCase) ? projectId[2..] : projectId;
+
+    // "urn:...:dm.lineage:abc?version=3" → "urn:...:dm.lineage:abc".
+    private static string StripVersionSuffix(string urn)
+    {
+        var query = urn.IndexOf('?');
+        return query < 0 ? urn : urn[..query];
+    }
+
+    // Version number from the "version=N" query value of a file version URN.
+    private static int? ParseVersionNumber(string? fileVersionUrn)
+    {
+        var query = fileVersionUrn?.IndexOf('?') ?? -1;
+        if (query < 0)
+            return null;
+
+        foreach (var pair in fileVersionUrn![(query + 1)..].Split('&'))
+        {
+            var parts = pair.Split('=', 2);
+            if (parts.Length == 2
+                && string.Equals(parts[0], "version", StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(parts[1], out var number))
+                return number;
+        }
+
+        return null;
+    }
+
+    // The element group when its alternativeIdentifiers.fileUrn is the wanted lineage URN, else null.
+    private static AecElementGroup? MatchElementGroup(JsonElement group, string lineageUrn)
+    {
+        if (!TryGetObject(group, "alternativeIdentifiers", out var identifiers)
+            || GetString(identifiers, "fileUrn") is not { } fileUrn
+            || !string.Equals(StripVersionSuffix(fileUrn), lineageUrn, StringComparison.OrdinalIgnoreCase)
+            || GetString(group, "id") is not { Length: > 0 } id)
+            return null;
+
+        var fileVersionUrn = GetString(identifiers, "fileVersionUrn");
+        int? versionNumber = TryGetObject(group, "version", out var version)
+            && version.TryGetProperty("versionNumber", out var number)
+            && number.ValueKind == JsonValueKind.Number
+            && number.TryGetInt32(out var parsed)
+                ? parsed
+                : ParseVersionNumber(fileVersionUrn);
+
+        return new AecElementGroup(id, GetString(group, "name"), fileUrn, fileVersionUrn, versionNumber);
+    }
 
     private static bool IsLinkElement(JsonElement element)
     {
