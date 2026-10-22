@@ -51,13 +51,15 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
         return new Harness(processor, store, aec, dispatcher);
     }
 
-    private static async Task<RevitWebhookSubscription> AddSubscriptionAsync(RevitWebhookStore store, RevitWebhookMode mode)
+    private static async Task<RevitWebhookSubscription> AddSubscriptionAsync(
+        RevitWebhookStore store, RevitWebhookMode mode, string? aecProjectId = "aec-project")
     {
         var subscription = new RevitWebhookSubscription
         {
             Id = Guid.NewGuid().ToString("N"),
             UserId = "user-1",
             ProjectId = "b.project",
+            AecProjectId = aecProjectId,
             ModelName = "Architecture.rvt",
             LineageUrn = "urn:adsk.wipprod:dm.lineage:abc",
             Mode = mode,
@@ -151,7 +153,7 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
     }
 
     [Fact]
-    public async Task ProcessAsync_ExtractionNeverReady_RecordsTimeoutError()
+    public async Task ProcessAsync_NoNewerElementGroupVersion_RecordsTimeoutError()
     {
         var h = NewHarness(timeoutMinutes: 0);
         var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish);
@@ -165,6 +167,36 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
         Assert.Equal(RevitWebhookSubscriptionStatus.Error, stored.Status);
         Assert.Contains("Timed out", stored.LastError);
         Assert.Equal(27, stored.BaselineVersion);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SubscriptionWithoutAecProjectId_ResolvesAndPersistsIt()
+    {
+        var h = NewHarness();
+        var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish, aecProjectId: null);
+        h.Aec.Groups.Enqueue(Group(28));
+
+        await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
+
+        Assert.Equal(1, h.Aec.ProjectCalls);
+        Assert.Equal(["aec-project"], h.Aec.GroupProjectIds);
+        var stored = h.Store.Get(subscription.Id)!;
+        Assert.Equal("aec-project", stored.AecProjectId);
+        Assert.Equal(RevitWebhookSubscriptionStatus.Active, stored.Status);
+    }
+
+    [Fact]
+    public async Task ProcessAsync_SubscriptionWithAecProjectId_DoesNotResolveProject()
+    {
+        var h = NewHarness();
+        var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish, aecProjectId: "stored-project");
+        h.Aec.Groups.Enqueue(Group(28));
+
+        await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
+
+        Assert.Equal(0, h.Aec.ProjectCalls);
+        Assert.Equal(["stored-project"], h.Aec.GroupProjectIds);
+        Assert.Equal("stored-project", h.Store.Get(subscription.Id)!.AecProjectId);
     }
 
     [Fact]
@@ -200,7 +232,8 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
     {
         public Queue<AecElementGroup?> Groups { get; } = new();
         private AecElementGroup? _last;
-        public int GroupCalls { get; private set; }
+        public int GroupCalls => GroupProjectIds.Count;
+        public List<string> GroupProjectIds { get; } = [];
         public int ProjectCalls { get; private set; }
         public string Diff { get; set; } = "[]";
         public Exception? DiffException { get; set; }
@@ -214,7 +247,7 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
 
         public Task<AecElementGroup?> FindElementGroupAsync(string accessToken, string aecProjectId, string lineageUrn, string? region, CancellationToken cancellationToken = default)
         {
-            GroupCalls++;
+            GroupProjectIds.Add(aecProjectId);
             if (Groups.Count > 0)
             {
                 _last = Groups.Dequeue();
