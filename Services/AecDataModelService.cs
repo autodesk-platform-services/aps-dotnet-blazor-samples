@@ -187,12 +187,17 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
     public async Task<AecProject?> FindProjectAsync(string accessToken, string dataManagementProjectId, string? region, CancellationToken cancellationToken = default)
     {
         var wanted = StripProjectPrefix(dataManagementProjectId);
+        logger.LogInformation("AEC DM: looking up project for Data Management project {ProjectId}", dataManagementProjectId);
+        var hubCount = 0;
 
         await foreach (var hub in PageAsync(accessToken, HubsQuery, "hubs", "results",
             cursor => new { pagination = Pagination(cursor) }, region, cancellationToken))
         {
             if (GetString(hub, "id") is not { Length: > 0 } hubId)
                 continue;
+
+            hubCount++;
+            logger.LogInformation("AEC DM: searching hub {HubId} ({HubName}) for the project", hubId, GetString(hub, "name"));
 
             await foreach (var project in PageAsync(accessToken, ProjectsQuery, "projects", "results",
                 cursor => new { hubId, pagination = Pagination(cursor) }, region, cancellationToken))
@@ -203,16 +208,21 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
                 if (dmProjectId is not null
                     && string.Equals(StripProjectPrefix(dmProjectId), wanted, StringComparison.OrdinalIgnoreCase)
                     && GetString(project, "id") is { Length: > 0 } id)
+                {
+                    logger.LogInformation("AEC DM: found project {AecProjectId} ({ProjectName}) in hub {HubId}", id, GetString(project, "name"), hubId);
                     return new AecProject(id, GetString(project, "name") ?? "", hubId);
+                }
             }
         }
 
+        logger.LogWarning("AEC DM: no project matching {ProjectId} found across {HubCount} hub(s)", dataManagementProjectId, hubCount);
         return null;
     }
 
     public async Task<AecElementGroup?> FindElementGroupAsync(string accessToken, string aecProjectId, string lineageUrn, string? region, CancellationToken cancellationToken = default)
     {
         var wanted = StripVersionSuffix(lineageUrn);
+        logger.LogInformation("AEC DM: looking up element group for {LineageUrn} in project {ProjectId}", lineageUrn, aecProjectId);
 
         try
         {
@@ -225,8 +235,12 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
                 }, region, cancellationToken))
             {
                 if (MatchElementGroup(group, wanted) is { } match)
+                {
+                    logger.LogInformation("AEC DM: found element group {ElementGroupId} at version {Version}", match.Id, match.VersionNumber);
                     return match;
+                }
             }
+            logger.LogInformation("AEC DM: no element group matched the fileUrn filter for {LineageUrn}", lineageUrn);
             return null;
         }
         catch (InvalidOperationException ex) when (!cancellationToken.IsCancellationRequested)
@@ -242,13 +256,18 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
             }, region, cancellationToken))
         {
             if (MatchElementGroup(group, wanted) is { } match)
+            {
+                logger.LogInformation("AEC DM: found element group {ElementGroupId} at version {Version} (client-side match)", match.Id, match.VersionNumber);
                 return match;
+            }
         }
+        logger.LogInformation("AEC DM: no element group found for {LineageUrn}", lineageUrn);
         return null;
     }
 
     public async Task<IReadOnlyList<string>> GetLinkElementIdsAsync(string accessToken, string elementGroupId, string? region, CancellationToken cancellationToken = default)
     {
+        logger.LogInformation("AEC DM: fetching RVT link elements of element group {ElementGroupId}", elementGroupId);
         try
         {
             var ids = new List<string>();
@@ -263,6 +282,7 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
                 if (GetString(element, "id") is { Length: > 0 } id)
                     ids.Add(id);
             }
+            logger.LogInformation("AEC DM: found {Count} link element(s) in element group {ElementGroupId}", ids.Count, elementGroupId);
             return ids;
         }
         catch (InvalidOperationException ex) when (!cancellationToken.IsCancellationRequested)
@@ -281,11 +301,14 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
             if (GetString(element, "id") is { Length: > 0 } id && IsLinkElement(element))
                 fallbackIds.Add(id);
         }
+        logger.LogInformation("AEC DM: found {Count} link element(s) in element group {ElementGroupId} (client-side filter)", fallbackIds.Count, elementGroupId);
         return fallbackIds;
     }
 
     public async Task<JsonElement> GetDiffAsync(string accessToken, string elementGroupId, int startVersion, string? region, CancellationToken cancellationToken = default)
     {
+        logger.LogInformation("AEC DM: diffing element group {ElementGroupId} from version {StartVersion} to latest", elementGroupId, startVersion);
+        var changeCount = 0;
         using var buffer = new MemoryStream();
         using (var writer = new Utf8JsonWriter(buffer))
         {
@@ -300,10 +323,12 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
                 }, region, cancellationToken))
             {
                 item.WriteTo(writer);
+                changeCount++;
             }
             writer.WriteEndArray();
         }
 
+        logger.LogInformation("AEC DM: diff returned {Count} change(s)", changeCount);
         using var document = JsonDocument.Parse(buffer.ToArray());
         return document.RootElement.Clone();
     }
@@ -323,6 +348,7 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
 
         for (var page = 0; page < MaxPages; page++)
         {
+            logger.LogDebug("AEC DM: requesting page {Page} of {Field}", page + 1, connectionField);
             var data = await PostAsync(accessToken, query, variables(cursor), region, cancellationToken);
             if (!TryGetObject(data, connectionField, out var connection))
                 yield break;

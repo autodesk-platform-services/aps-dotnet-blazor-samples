@@ -31,6 +31,8 @@ public class RevitWebhookService(
         IEnumerable<OutgoingWebhookTarget> targets,
         CancellationToken cancellationToken = default)
     {
+        logger.LogInformation("Subscribing {ModelName} ({LineageUrn}) to {Event} in project {ProjectId}", modelName, lineageUrn, EventName(mode), projectId);
+
         var callbackBaseUrl = options.Value.CallbackBaseUrl?.TrimEnd('/');
         if (string.IsNullOrEmpty(callbackBaseUrl))
         {
@@ -51,7 +53,10 @@ public class RevitWebhookService(
             throw new InvalidOperationException($"{modelName} is already subscribed to {EventName(mode)}.");
         }
 
+        logger.LogInformation("Step 1/5: acquiring the user access token for {UserId}", userId);
         var userToken = await tokenService.GetAccessTokenAsync(userId, cancellationToken);
+
+        logger.LogInformation("Step 2/5: resolving the parent folder of {ModelName}", modelName);
 
         var folder = await dataManagementClient.GetItemParentFolderAsync(
             projectId: projectId,
@@ -63,6 +68,9 @@ public class RevitWebhookService(
             throw new InvalidOperationException($"Couldn't resolve the parent folder of {modelName}.");
         }
 
+        logger.LogInformation("Resolved parent folder {FolderId}", folderId);
+
+        logger.LogInformation("Step 3/5: resolving the AEC Data Model project and element group for {ModelName}", modelName);
         // Resolve the AEC Data Model element group before creating the hook so a model that isn't
         // available yet doesn't leave an unused hook behind.
         var aecProject = await aecDataModel.FindProjectAsync(userToken, projectId, region, cancellationToken)
@@ -79,6 +87,10 @@ public class RevitWebhookService(
 
         var linkElementIds = await aecDataModel.GetLinkElementIdsAsync(userToken, elementGroup.Id, region, cancellationToken);
 
+        logger.LogInformation("Baseline for {ModelName}: element group {ElementGroupId} at version {Version} with {LinkCount} link element(s)",
+            modelName, elementGroup.Id, baselineVersion, linkElementIds.Count);
+
+        logger.LogInformation("Step 4/5: finding or creating the {Event} webhook for folder {FolderId}", EventName(mode), folderId);
         // Hook management uses an app-level (2-legged) token, so the hook can still be deleted
         // when no user session is available.
         var webhookToken = await apsAuth.GetTwoLeggedTokenAsync();
@@ -86,13 +98,20 @@ public class RevitWebhookService(
         var webhookRegion = ToWebhooksRegion(region);
         var callbackUrl = $"{callbackBaseUrl}/{(mode == RevitWebhookMode.Publish ? "model-publish" : "model-sync")}";
 
-        var hookId = await FindExistingHookIdAsync(webhookEvent, folderId, callbackUrl, webhookRegion, webhookToken)
+        var existingHookId = await FindExistingHookIdAsync(webhookEvent, folderId, callbackUrl, webhookRegion, webhookToken);
+        if (existingHookId != null)
+            logger.LogInformation("Reusing existing webhook {HookId}", existingHookId);
+        else
+            logger.LogInformation("No reusable webhook found; creating one with callback {CallbackUrl}", callbackUrl);
+
+        var hookId = existingHookId
             ?? await CreateHookAsync(webhookEvent, hubId, projectId, folderId, callbackUrl, webhookRegion, webhookToken);
         if (string.IsNullOrEmpty(hookId))
         {
             throw new InvalidOperationException($"Creating the {EventName(mode)} webhook for {modelName} failed.");
         }
 
+        logger.LogInformation("Step 5/5: saving the subscription for {ModelName}", modelName);
         var subscription = new RevitWebhookSubscription
         {
             Id = Guid.NewGuid().ToString("N"),
@@ -207,6 +226,7 @@ public class RevitWebhookService(
 
         if (!response.IsSuccessStatusCode)
         {
+            logger.LogWarning("Creating the webhook failed: {StatusCode} {Body}", response.StatusCode, await response.Content.ReadAsStringAsync());
             return null;
         }
 

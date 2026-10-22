@@ -44,6 +44,7 @@ public class RevitWebhookProcessor(
 
     internal async Task ProcessAsync(RevitWebhookWorkItem item, CancellationToken cancellationToken)
     {
+        logger.LogInformation("Received {Source} work for subscription {SubscriptionId}", item.Source, item.SubscriptionId);
         var gate = _subscriptionLocks.GetOrAdd(item.SubscriptionId, _ => new SemaphoreSlim(1, 1));
         try
         {
@@ -102,6 +103,9 @@ public class RevitWebhookProcessor(
         // while still diffing from the published baseline.
         var minimumVersion = subscription.Mode == RevitWebhookMode.Publish ? subscription.BaselineVersion : subscription.LastSeenVersion;
 
+        logger.LogInformation("{ModelName}: processing {Source} ({Mode}); waiting for an AEC Data Model version newer than {Minimum}",
+            subscription.ModelName, source, subscription.Mode, minimumVersion);
+
         subscription.Status = RevitWebhookSubscriptionStatus.Processing;
         await PersistIfStillSubscribedAsync(subscription);
 
@@ -120,12 +124,15 @@ public class RevitWebhookProcessor(
         }
 
         var newVersion = elementGroup.VersionNumber!.Value;
+        logger.LogInformation("{ModelName}: AEC Data Model reached version {Version}; diffing from version {From}",
+            subscription.ModelName, newVersion, subscription.BaselineVersion);
         subscription.ElementGroupId = elementGroup.Id;
 
         var fromVersion = subscription.BaselineVersion;
         var accessToken = await tokenService.GetAccessTokenAsync(subscription.UserId, cancellationToken);
         var diff = await aecDataModel.GetDiffAsync(accessToken, subscription.ElementGroupId, fromVersion, subscription.Region, cancellationToken);
         var changes = RevitLinkChangeClassifier.Classify(diff, subscription.KnownLinkElementIds);
+        logger.LogInformation("{ModelName}: classified {Count} link change(s)", subscription.ModelName, changes.Count);
 
         foreach (var change in changes)
         {
@@ -143,8 +150,12 @@ public class RevitWebhookProcessor(
             ? changes.Where(c => !subscription.NotifiedKeys.Contains(NotifiedKey(c))).ToList()
             : changes.ToList();
 
+        logger.LogInformation("{ModelName}: delivering {Count} change(s) to {TargetCount} target(s)",
+            subscription.ModelName, toNotify.Count, subscription.Targets.Count);
+
         foreach (var change in toNotify)
         {
+            logger.LogInformation("{ModelName}: dispatching {EventType} for {FileName}", subscription.ModelName, change.EventType, change.FileName);
             var deliveries = await dispatcher.DispatchAsync(subscription, change, fromVersion, newVersion, source, cancellationToken);
             await store.AddEventAsync(new RevitWebhookEvent
             {
@@ -190,6 +201,7 @@ public class RevitWebhookProcessor(
         // Subscriptions created before the AEC project id was stored resolve it once.
         if (string.IsNullOrEmpty(subscription.AecProjectId))
         {
+            logger.LogInformation("{ModelName}: resolving the missing AEC project id", subscription.ModelName);
             var token = await tokenService.GetAccessTokenAsync(subscription.UserId, cancellationToken);
             var aecProject = await aecDataModel.FindProjectAsync(token, subscription.ProjectId, subscription.Region, cancellationToken)
                 ?? throw new InvalidOperationException($"Couldn't find the project of {subscription.ModelName} in the AEC Data Model.");
@@ -215,7 +227,7 @@ public class RevitWebhookProcessor(
                 return (null, observedAt);
             }
 
-            logger.LogDebug("{ModelName}: AEC Data Model version {Version}; waiting for a version newer than {Minimum}",
+            logger.LogInformation("{ModelName}: AEC Data Model version {Version}; waiting for a version newer than {Minimum}",
                 subscription.ModelName, elementGroup?.VersionNumber, minimumVersion);
             await Task.Delay(pollInterval, cancellationToken);
         }
