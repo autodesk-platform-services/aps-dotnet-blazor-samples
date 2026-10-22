@@ -63,17 +63,21 @@ public class RevitWebhookService(
             throw new InvalidOperationException($"Couldn't resolve the parent folder of {modelName}.");
         }
 
-        // Check extraction before creating the hook so a model that isn't ready doesn't leave an
-        // unused hook behind.
-        var extraction = await aecDataModel.GetExtractionStatusAsync(userToken, lineageUrn, projectId, region, cancellationToken);
-        if (!extraction.IsSuccess || string.IsNullOrEmpty(extraction.ElementGroupId) || extraction.VersionNumber is null)
+        // Resolve the AEC Data Model element group before creating the hook so a model that isn't
+        // available yet doesn't leave an unused hook behind.
+        var aecProject = await aecDataModel.FindProjectAsync(userToken, projectId, region, cancellationToken)
+            ?? throw new InvalidOperationException(
+                $"Couldn't find {modelName}'s project in the AEC Data Model. Make sure your account has access to it.");
+
+        var elementGroup = await aecDataModel.FindElementGroupAsync(userToken, aecProject.Id, lineageUrn, region, cancellationToken);
+        if (elementGroup?.VersionNumber is not int baselineVersion)
         {
             throw new InvalidOperationException(
-                $"The AEC Data Model extraction for {modelName} is not ready (status: {extraction.Status ?? "unknown"}). " +
+                $"The AEC Data Model has no element group for {modelName} yet. " +
                 "Make sure the model is a published Revit Cloud Worksharing model and try again in a few minutes.");
         }
 
-        var linkElementIds = await aecDataModel.GetLinkElementIdsAsync(userToken, extraction.ElementGroupId, region, cancellationToken);
+        var linkElementIds = await aecDataModel.GetLinkElementIdsAsync(userToken, elementGroup.Id, region, cancellationToken);
 
         // Hook management uses an app-level (2-legged) token, so the hook can still be deleted
         // when no user session is available.
@@ -101,9 +105,10 @@ public class RevitWebhookService(
             FolderId = folderId,
             Mode = mode,
             HookId = hookId,
-            ElementGroupId = extraction.ElementGroupId,
-            BaselineVersion = extraction.VersionNumber.Value,
-            LastSeenVersion = extraction.VersionNumber.Value,
+            ElementGroupId = elementGroup.Id,
+            AecProjectId = aecProject.Id,
+            BaselineVersion = baselineVersion,
+            LastSeenVersion = baselineVersion,
             KnownLinkElementIds = linkElementIds.ToHashSet(),
             Targets = targets.ToList(),
             CreatedAt = DateTime.UtcNow,

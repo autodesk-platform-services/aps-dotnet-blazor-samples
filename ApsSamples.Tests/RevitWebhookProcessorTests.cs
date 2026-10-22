@@ -72,6 +72,9 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
         return subscription;
     }
 
+    private static AecElementGroup Group(int version) =>
+        new("group-1", "Architecture.rvt", "urn:adsk.wipprod:dm.lineage:abc", null, version);
+
     private static RevitWebhookWorkItem Item(RevitWebhookSubscription subscription, string source) =>
         new(subscription.Id, source) { EnqueuedAt = DateTime.UtcNow };
 
@@ -80,8 +83,8 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
     {
         var h = NewHarness();
         var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish);
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("IN_PROGRESS", null, null));
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("SUCCESS", "group-1", 28));
+        h.Aec.Groups.Enqueue(null);
+        h.Aec.Groups.Enqueue(Group(28));
         h.Aec.Diff = LinkAddedDiff;
 
         await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
@@ -116,10 +119,10 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
         var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Sync);
         h.Aec.Diff = LinkAddedDiff;
 
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("SUCCESS", "group-1", 28));
+        h.Aec.Groups.Enqueue(Group(28));
         await h.Processor.ProcessAsync(Item(subscription, "model.sync"), CancellationToken.None);
 
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("SUCCESS", "group-1", 29));
+        h.Aec.Groups.Enqueue(Group(29));
         await h.Processor.ProcessAsync(Item(subscription, "model.sync"), CancellationToken.None);
 
         Assert.Single(h.Dispatcher.Calls);
@@ -139,11 +142,11 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
         h.Aec.Diff = LinkAddedDiff;
         var duplicate = Item(subscription, "model.publish");
 
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("SUCCESS", "group-1", 28));
+        h.Aec.Groups.Enqueue(Group(28));
         await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
         await h.Processor.ProcessAsync(duplicate, CancellationToken.None);
 
-        Assert.Equal(1, h.Aec.StatusCalls);
+        Assert.Equal(1, h.Aec.GroupCalls);
         Assert.Single(h.Dispatcher.Calls);
     }
 
@@ -152,7 +155,7 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
     {
         var h = NewHarness(timeoutMinutes: 0);
         var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish);
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("IN_PROGRESS", null, null));
+        h.Aec.Groups.Enqueue(null);
 
         await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
 
@@ -169,7 +172,7 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
     {
         var h = NewHarness();
         var subscription = await AddSubscriptionAsync(h.Store, RevitWebhookMode.Publish);
-        h.Aec.Statuses.Enqueue(new AecExtractionStatus("SUCCESS", "group-1", 28));
+        h.Aec.Groups.Enqueue(Group(28));
         h.Aec.DiffException = new InvalidOperationException("AEC Data Model error: boom");
 
         await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
@@ -189,25 +192,32 @@ public class RevitWebhookProcessorTests : IClassFixture<TempWorkingDirectoryFixt
 
         await h.Processor.ProcessAsync(Item(subscription, "model.publish"), CancellationToken.None);
 
-        Assert.Equal(0, h.Aec.StatusCalls);
+        Assert.Equal(0, h.Aec.GroupCalls);
         Assert.Null(h.Store.Get(subscription.Id));
     }
 
     private sealed class FakeAecDataModelService : IAecDataModelService
     {
-        public Queue<AecExtractionStatus> Statuses { get; } = new();
-        private AecExtractionStatus _last = new("IN_PROGRESS", null, null);
-        public int StatusCalls { get; private set; }
+        public Queue<AecElementGroup?> Groups { get; } = new();
+        private AecElementGroup? _last;
+        public int GroupCalls { get; private set; }
+        public int ProjectCalls { get; private set; }
         public string Diff { get; set; } = "[]";
         public Exception? DiffException { get; set; }
         public List<int> DiffStartVersions { get; } = [];
 
-        public Task<AecExtractionStatus> GetExtractionStatusAsync(string accessToken, string fileUrn, string accProjectId, string? region, CancellationToken cancellationToken = default)
+        public Task<AecProject?> FindProjectAsync(string accessToken, string dataManagementProjectId, string? region, CancellationToken cancellationToken = default)
         {
-            StatusCalls++;
-            if (Statuses.Count > 0)
+            ProjectCalls++;
+            return Task.FromResult<AecProject?>(new AecProject("aec-project", "Project", "aec-hub"));
+        }
+
+        public Task<AecElementGroup?> FindElementGroupAsync(string accessToken, string aecProjectId, string lineageUrn, string? region, CancellationToken cancellationToken = default)
+        {
+            GroupCalls++;
+            if (Groups.Count > 0)
             {
-                _last = Statuses.Dequeue();
+                _last = Groups.Dequeue();
             }
             return Task.FromResult(_last);
         }
