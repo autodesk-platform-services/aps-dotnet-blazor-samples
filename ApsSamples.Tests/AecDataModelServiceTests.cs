@@ -41,7 +41,7 @@ public class AecDataModelServiceTests
         Assert.Equal("group-1", first.GetProperty("elementGroupId").GetString());
         Assert.Equal(27, first.GetProperty("startVersion").GetInt32());
         Assert.Equal(["ADDITION", "REMOVAL"], first.GetProperty("changeFilter").EnumerateArray().Select(e => e.GetString()).ToList());
-        Assert.Equal(100, first.GetProperty("pagination").GetProperty("limit").GetInt32());
+        Assert.Equal(50, first.GetProperty("pagination").GetProperty("limit").GetInt32());
         Assert.False(first.GetProperty("pagination").TryGetProperty("cursor", out _));
         Assert.Equal("page-2", handler.Requests[1].Variables.GetProperty("pagination").GetProperty("cursor").GetString());
         Assert.Contains("diffElementGroupByVersionWithLatest", handler.Requests[0].Query);
@@ -121,7 +121,7 @@ public class AecDataModelServiceTests
 
         Assert.Equal(3, handler.Requests.Count);
         Assert.Contains("hubs", handler.Requests[0].Query);
-        Assert.Equal(100, handler.Requests[0].Variables.GetProperty("pagination").GetProperty("limit").GetInt32());
+        Assert.Equal(50, handler.Requests[0].Variables.GetProperty("pagination").GetProperty("limit").GetInt32());
         Assert.Equal("urn:adsk.ace:prod.scope:hub-1", handler.Requests[1].Variables.GetProperty("hubId").GetString());
         Assert.Equal("urn:adsk.ace:prod.scope:hub-2", handler.Requests[2].Variables.GetProperty("hubId").GetString());
         Assert.All(handler.Requests, r => Assert.Equal("EMEA", r.Region));

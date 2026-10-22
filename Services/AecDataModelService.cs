@@ -12,7 +12,7 @@ public class AecDataModelService(IHttpClientFactory httpClientFactory, ILogger<A
 {
     public const string GraphQlEndpoint = "https://developer.api.autodesk.com/aec/graphql";
 
-    private const int PageLimit = 100;
+    private const int PageLimit = 50;
     // Safety net against a server that keeps returning the same cursor.
     private const int MaxPages = 1000;
 
