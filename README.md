@@ -15,7 +15,7 @@ A Blazor Server web application demonstrating how to use [Autodesk Platform Serv
 - **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
 - **Create Sheets** – Batch-create sheets in Revit cloud models.
 - **View Models** – Select a Revit cloud model and render it interactively in the browser using the APS Viewer with Blazor JavaScript Interoperability.
-- **AI Assistants** – Chat with role-based AI assistants (one assistant per Forma project role) to automate Revit model management tasks. Pick an assistant when starting a conversation and `@mention` another assistant to bring it into the conversation. Project admins create one assistant per project role and choose which tool modules it can use: **Revit Models**, **Folders**, **Project Users** and **Issues**. Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
+- **AI Assistants** – Chat with role-based AI assistants (one assistant per Forma project role) to automate Revit model management tasks. Pick an assistant when starting a conversation and `@mention` another assistant to bring it into the conversation. Project admins create one assistant per project role and choose which tool modules it can use: **Revit Models**, **Folders**, **Project Users**, **Issues** and **Delegation** (hand tasks to other assistants). Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
 
 The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their hubs of Forma for Construction and projects through a folder explorer, configure automation jobs, and track their real-time status.
 
@@ -69,6 +69,7 @@ Every agent action runs as the agent's own **service account** (SSA), which is c
 - **Folders** – new folders are created under "Project Files" unless a parent folder is given. The service account needs Edit or Manage permission on the parent folder. Existing folders are reused, so repeating a request does not create duplicates.
 - **Project Users** – hub user search uses a 2-legged token with `account:read`, so the APS app must be provisioned as a **custom integration** in the ACC account. Adding users and changing their role or company needs the agent's service account to have **project admin** access (grant it the Project Administration product).
 - **Issues** – using Issues through a service account needs a **Forma Build** subscription on that service account. The ACC Issues API has no delete: agents can close an issue by setting its status to `closed`, but deleting it must be done in the ACC UI.
+- **Delegation** – an assistant with these tools (for example the BIM Manager assistant) can list the other assistants in the project and hand tasks to them. Delegation is asynchronous: the assistant replies at once, and each delegate runs the task in the background as itself, with its own service account and its own enabled tools. Delegates can't delegate further. A task can depend on earlier delegated tasks in the same conversation; it waits until they complete and fails if one of them fails. Results and failures are posted in the originating conversation by the delegate and shown in the Tasks panel. Each delegate needs its own service account, project access, and the tool modules the task requires.
 
 ---
 
@@ -95,13 +96,16 @@ Every agent action runs as the agent's own **service account** (SSA), which is c
      },
      "Agent": {
        "ModelName": "llama3.1:8b",
-       "OllamaEndpoint": "http://localhost:11434"
+       "OllamaEndpoint": "http://localhost:11434",
+       "MaxToolIterations": 10
      },
      "Webhooks": {
        "CallbackUrl": "<ngrok-url>/api/webhooks/version-added"
      }
    }
    ```
+
+   `Agent:MaxToolIterations` (optional, default `10`) limits how many rounds of tool calls an assistant can make for a single request.
 
    Using User Secrets (recommended):
 
@@ -141,6 +145,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This is a **demo-only file store** — all data is lost if the files are deleted, and it is not suitable for concurrent multi-user production deployments. Production forks should replace `AgentConversationService` with a database-backed implementation.
 - In the AI Assistants feature, users see the assistants configured for their project roles. Assistants are configured by Project Administrators under **Settings → Assistants**.
 - AI Assistants can't delete issues, delete or rename folders, manage folder permissions, or remove project users.
+- The delegation queue is in memory. After a restart, pending delegated tasks are queued again and tasks that were running are marked failed ("Interrupted by an app restart."), so their work is not silently repeated. At most two delegated tasks run at once, each limited to 30 minutes. Multi-step delegation depends on how well the local model calls tools.
 - The Automation API activity must already exist and be published before running the sample.
 - Ollama must be running and accessible for the AI Assistants feature to function.
 
