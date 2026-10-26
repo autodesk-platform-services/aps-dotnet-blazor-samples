@@ -617,6 +617,14 @@
                                 </summary>
                                 <div style="margin-top: 8px; font-size: 12px;">
                                     <div>Started: @task.StartedAt.ToLocalTime().ToString("g")</div>
+                                    @if (!string.IsNullOrEmpty(task.DelegatedByAgentId))
+                                    {
+                                        <div style="margin-top: 4px;">Delegated by @task.DelegatedByAgentName to @task.AgentName</div>
+                                    }
+                                    @if (task.DependsOnTaskIds.Count > 0 && task.Status == AgentTaskStatus.Pending)
+                                    {
+                                        <div style="margin-top: 4px;">Waiting on @task.DependsOnTaskIds.Count task(s)</div>
+                                    }
                                     @if (task.CompletedAt.HasValue)
                                     {
                                         <div>Completed: @task.CompletedAt.Value.ToLocalTime().ToString("g") (@FormatDuration(task.StartedAt, task.CompletedAt.Value))</div>
@@ -628,6 +636,10 @@
                                     @if (task.Status == AgentTaskStatus.Failed && !string.IsNullOrEmpty(task.ErrorDetail))
                                     {
                                         <div style="margin-top: 4px; color: var(--error);">@task.ErrorDetail</div>
+                                    }
+                                    @if (task.Status == AgentTaskStatus.Completed && !string.IsNullOrEmpty(task.Result))
+                                    {
+                                        <div style="margin-top: 4px; white-space: pre-wrap; max-height: 160px; overflow-y: auto;">@task.Result</div>
                                     }
                                 </div>
                             </details>

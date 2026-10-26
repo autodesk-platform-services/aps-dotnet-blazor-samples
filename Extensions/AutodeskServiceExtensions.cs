@@ -43,6 +43,7 @@ public static class AutodeskServiceExtensions
         services.AddScoped<FolderTools>();
         services.AddScoped<ProjectUserTools>();
         services.AddScoped<IssueTools>();
+        services.AddScoped<DelegationTools>();
         services.AddScoped<IProjectRoleService, ProjectRoleService>();
         services.AddScoped<ICompanyService, CompanyService>();
         services.AddScoped<IProjectUserService, ProjectUserService>();
@@ -59,13 +60,20 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<IRevitWebhookTokenService, RevitWebhookTokenService>();
         services.AddSingleton<IRevitWebhookStore, RevitWebhookStore>();
         services.AddSingleton<RevitWebhookQueue>();
+        services.AddSingleton<DelegatedTaskQueue>();
         services.AddSingleton<IRevitWebhookDispatcher, RevitWebhookDispatcher>();
         services.AddHostedService<RevitWebhookProcessor>();
+        services.AddHostedService<DelegatedTaskProcessor>();
         // SsaService depends on scoped IAPSAuthenticationService + AdminClient, so it must be scoped too.
         services.AddScoped<ISsaService, SsaService>();
 
         var agentOptions = configuration.GetSection("Agent").Get<AgentOptions>() ?? new AgentOptions();
-        services.AddSingleton<IChatClient>(_ => new OllamaApiClient(new Uri(agentOptions.OllamaEndpoint), agentOptions.ModelName));
+        // Function invocation is added here, rather than by the agent, to bound the tool-calling loop.
+        services.AddSingleton<IChatClient>(_ =>
+            ((IChatClient)new OllamaApiClient(new Uri(agentOptions.OllamaEndpoint), agentOptions.ModelName))
+                .AsBuilder()
+                .UseFunctionInvocation(configure: f => f.MaximumIterationsPerRequest = agentOptions.MaxToolIterations)
+                .Build());
         services.AddScoped<IAgentChatService, AgentChatService>();
 
         return services;

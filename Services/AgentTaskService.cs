@@ -170,6 +170,22 @@ public class AgentTaskService : IAgentTaskService
         return Task.FromResult(task);
     }
 
+    public Task<AgentTaskInfo?> GetTaskAsync(string taskId)
+    {
+        _tasksCache.TryGetValue(taskId, out var task);
+        return Task.FromResult(task);
+    }
+
+    public Task<IReadOnlyList<AgentTaskInfo>> GetTasksByStatusAsync(AgentTaskStatus status)
+    {
+        IReadOnlyList<AgentTaskInfo> result = _tasksCache.Values
+            .Where(t => t.Status == status)
+            .OrderBy(t => t.StartedAt)
+            .ToList();
+
+        return Task.FromResult(result);
+    }
+
     private async Task SaveToFileAsync()
     {
         await _fileLock.WaitAsync();
