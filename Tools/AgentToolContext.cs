@@ -25,6 +25,9 @@ public class AgentToolContext(ISsaService ssaService, IAPSAuthenticationService 
     public string? AgentId { get; set; }
     public string? SsaId { get; set; }
 
+    // Set only while a delegate runs a delegated task, so it can't delegate further (recursion guard).
+    public string? DelegatedTaskId { get; set; }
+
     // Account Admin / Issues / RCM style IDs drop the "b." prefix used by the Data Management API.
     public string AccountProjectId => StripHubPrefix(RequireProjectId());
     public string AccountId => StripHubPrefix(RequireHubId());
