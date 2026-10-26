@@ -9,4 +9,6 @@ public interface IAgentTaskService
     Task<IReadOnlyList<AgentTaskInfo>> GetTasksByConversationAsync(string conversationId);
     Task<IReadOnlyList<AgentTaskInfo>> GetTasksByProjectAsync(string projectId);
     Task<AgentTaskInfo?> GetTaskByWebhookHookIdAsync(string hookId);
+    Task<AgentTaskInfo?> GetTaskAsync(string taskId);
+    Task<IReadOnlyList<AgentTaskInfo>> GetTasksByStatusAsync(AgentTaskStatus status);
 }
