@@ -241,7 +241,7 @@ public class DelegatedTaskProcessor(
 
     // The queue is in memory, so work queued or running when the app stopped is lost. Pending tasks
     // are queued again; running ones are failed rather than repeated, since their work may be partly done.
-    private async Task RecoverInterruptedTasksAsync()
+    internal async Task RecoverInterruptedTasksAsync()
     {
         foreach (var task in await taskService.GetTasksByStatusAsync(AgentTaskStatus.Running))
         {
