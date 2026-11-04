@@ -154,6 +154,6 @@ public class RevitWebhookTokenServiceTests : IClassFixture<TempWorkingDirectoryF
         public string GetAuthorizationUrl(List<Scopes> scopes) => throw new NotImplementedException();
         public Task<UserInfo> GetUserInfoAsync(string accessToken) => throw new NotImplementedException();
         public Task<string> GetTwoLeggedTokenAsync() => throw new NotImplementedException();
-        public Task<string> GetSsaAppTwoLeggedTokenAsync() => throw new NotImplementedException();
+        public Task<string> GetSsaAppTwoLeggedTokenAsync(string clientId, string clientSecret) => throw new NotImplementedException();
     }
 }

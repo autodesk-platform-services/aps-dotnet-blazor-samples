@@ -4,6 +4,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using ApsSamples.Models;
 using Autodesk.Construction.AccountAdmin;
 using Autodesk.Construction.AccountAdmin.Model;
 using Autodesk.SecureServiceAccount.Http;
@@ -17,8 +18,12 @@ public class SsaService : ISsaService
     private const string TokenEndpoint = "https://developer.api.autodesk.com/authentication/v2/token";
     private const string JwtBearerGrant = "urn:ietf:params:oauth:grant-type:jwt-bearer";
 
+    // APS limits each app to 10 SSAs.
+    public const int MaxSsasPerApp = 10;
+
     private readonly IAPSAuthenticationService _auth;
-    private readonly IConfiguration _configuration;
+    private readonly ISsaAppStore _appStore;
+    private readonly IAgentRegistryService _agentRegistry;
     private readonly AdminClient _adminClient;
     private readonly ILogger<SsaService> _logger;
 
@@ -35,14 +40,16 @@ public class SsaService : ISsaService
 
     public SsaService(
         IAPSAuthenticationService auth,
-        IConfiguration configuration,
+        ISsaAppStore appStore,
+        IAgentRegistryService agentRegistry,
         AdminClient adminClient,
         AccountManagementApi accountApi,
         KeyManagementApi keyApi,
         ILogger<SsaService> logger)
     {
         _auth = auth;
-        _configuration = configuration;
+        _appStore = appStore;
+        _agentRegistry = agentRegistry;
         _adminClient = adminClient;
         _logger = logger;
 
@@ -56,9 +63,21 @@ public class SsaService : ISsaService
         LoadKeysFromFile();
     }
 
-    public async Task<string> CreateSsaAsync(string name)
+    public async Task<(string ClientId, string SsaId)> CreateSsaAsync(string projectId, string name)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        var counts = new List<(string ClientId, int Used)>();
+        foreach (var app in _appStore.GetByProject(projectId))
+        {
+            try
+            {
+                counts.Add((app.ClientId, await GetSsaCountAsync(app.ClientId)));
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Could not count the SSAs of APS app {ClientId}; skipping it.", app.ClientId);
+            }
+        }
+
         var sanitizedName = SanitizeSsaName(name);
         var payload = new CreateServiceAccountPayload
         {
@@ -67,15 +86,47 @@ public class SsaService : ISsaService
             LastName = sanitizedName,
         };
 
-        var response = await _accountApi.CreateServiceAccountAsync(
-            createServiceAccountPayload: payload,
-            accessToken: token);
+        foreach (var clientId in SelectAppsWithCapacity(counts, MaxSsasPerApp))
+        {
+            var token = await GetManagementTokenAsync(clientId);
 
-        var serviceAccount = response.Content
-            ?? throw new InvalidOperationException("SSA create response returned no content");
+            try
+            {
+                var response = await _accountApi.CreateServiceAccountAsync(
+                    createServiceAccountPayload: payload,
+                    accessToken: token);
 
-        _logger.LogInformation("Created SSA {SsaId} ({Email})", serviceAccount.ServiceAccountId, serviceAccount.Email);
-        return serviceAccount.ServiceAccountId!;
+                var serviceAccount = response.Content
+                    ?? throw new InvalidOperationException("SSA create response returned no content");
+
+                _logger.LogInformation("Created SSA {SsaId} ({Email}) in APS app {ClientId}",
+                    serviceAccount.ServiceAccountId, serviceAccount.Email, clientId);
+                return (clientId, serviceAccount.ServiceAccountId!);
+            }
+            catch (Exception ex) when (IsForbidden(ex))
+            {
+                // The count can lag behind APS; a 403 means the app is full, so try the next one.
+                _logger.LogWarning("APS app {ClientId} refused a new SSA; treating it as full.", clientId);
+            }
+        }
+
+        throw new InvalidOperationException(
+            "Every APS app for this project is full or none is configured. "
+            + "Add another APS app in Settings > Assistants.");
+    }
+
+    // Client IDs of the apps with fewer than max SSAs, in input order.
+    internal static List<string> SelectAppsWithCapacity(IEnumerable<(string ClientId, int Used)> apps, int max) =>
+        apps.Where(a => a.Used < max).Select(a => a.ClientId).ToList();
+
+    private SsaAppCredential GetApp(string clientId) =>
+        _appStore.Get(clientId)
+            ?? throw new InvalidOperationException($"No APS app with client ID {clientId} is configured.");
+
+    private async Task<string> GetManagementTokenAsync(string clientId)
+    {
+        var app = GetApp(clientId);
+        return await _auth.GetSsaAppTwoLeggedTokenAsync(app.ClientId, app.ClientSecret);
     }
 
     // The SSA API requires name/firstName/lastName to be 5-100 characters, containing only
@@ -102,9 +153,9 @@ public class SsaService : ISsaService
         return slug;
     }
 
-    public async Task<List<string>> GetAllSsaIdsAsync()
+    public async Task<List<string>> GetAllSsaIdsAsync(string clientId)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        var token = await GetManagementTokenAsync(clientId);
 
         var response = await _accountApi.GetAllServiceAccountsAsync(accessToken: token);
 
@@ -115,9 +166,11 @@ public class SsaService : ISsaService
             .ToList() ?? new List<string>();
     }
 
-    public async Task<string> StoreSsaKeyAsync(string ssaId)
+    public async Task<int> GetSsaCountAsync(string clientId) => (await GetAllSsaIdsAsync(clientId)).Count;
+
+    public async Task<string> StoreSsaKeyAsync(string clientId, string ssaId)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        var token = await GetManagementTokenAsync(clientId);
 
         var response = await _keyApi.CreateServiceAccountKeyAsync(
             serviceAccountId: ssaId,
@@ -131,7 +184,7 @@ public class SsaService : ISsaService
         await _keysFileLock.WaitAsync();
         try
         {
-            _keysCache[ssaId] = new SsaKeyRecord { KeyId = kid, PrivateKeyPem = pem };
+            _keysCache[ssaId] = new SsaKeyRecord { ClientId = clientId, KeyId = kid, PrivateKeyPem = pem };
             await SaveKeysToFileNoLockAsync();
         }
         finally
@@ -143,9 +196,9 @@ public class SsaService : ISsaService
         return kid;
     }
 
-    public async Task<string> GetSsaEmailAsync(string ssaId)
+    public async Task<string> GetSsaEmailAsync(string clientId, string ssaId)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
+        var token = await GetManagementTokenAsync(clientId);
 
         var response = await _accountApi.GetServiceAccountAsync(
             serviceAccountId: ssaId,
@@ -190,20 +243,23 @@ public class SsaService : ISsaService
             _keysFileLock.Release();
         }
 
-        var ssaAppClientId = _configuration["SsaApp:ClientId"]
-            ?? throw new InvalidOperationException("SsaApp:ClientId is required");
-        var ssaAppClientSecret = _configuration["SsaApp:ClientSecret"]
-            ?? throw new InvalidOperationException("SsaApp:ClientSecret is required");
+        if (string.IsNullOrWhiteSpace(keyRecord.ClientId))
+        {
+            throw new InvalidOperationException(
+                $"SSA {ssaId} isn't linked to an APS app. Add the app that owns it in Settings > Assistants.");
+        }
+
+        var app = GetApp(keyRecord.ClientId);
 
         var assertion = BuildJwtAssertion(
             keyId: keyRecord.KeyId,
             privateKeyPem: keyRecord.PrivateKeyPem,
-            issuerClientId: ssaAppClientId,
+            issuerClientId: app.ClientId,
             subjectSsaId: ssaId,
             scopes: normalizedScopes);
 
         using var http = new HttpClient();
-        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{ssaAppClientId}:{ssaAppClientSecret}"));
+        var basic = Convert.ToBase64String(Encoding.UTF8.GetBytes($"{app.ClientId}:{app.ClientSecret}"));
         var request = new HttpRequestMessage(HttpMethod.Post, TokenEndpoint)
         {
             Content = new FormUrlEncodedContent(new Dictionary<string, string>
@@ -300,7 +356,7 @@ public class SsaService : ISsaService
         _logger.LogInformation("Removed project user {UserId} from project {ProjectId}", userId, accountProjectId);
     }
 
-    public async Task DeprovisionSsaAsync(string projectId, string ssaId, string? projectUserId, string accessToken)
+    public async Task DeprovisionSsaAsync(string projectId, string clientId, string ssaId, string? projectUserId, string accessToken)
     {
         if (string.IsNullOrWhiteSpace(ssaId))
         {
@@ -310,22 +366,30 @@ public class SsaService : ISsaService
         // The robot user must leave the project before its SSA is deleted. If removal fails, the
         // exception propagates and the SSA is left intact so the delete can be retried.
         await RemoveSsaFromProjectAsync(projectId, ResolveProjectUserId(projectUserId, ssaId), accessToken);
-        await DeleteSsaAsync(ssaId);
+        await DeleteSsaAsync(clientId, ssaId);
     }
 
-    public async Task DeleteSsaAsync(string ssaId)
+    public async Task DeleteSsaAsync(string clientId, string ssaId)
     {
-        var token = await _auth.GetSsaAppTwoLeggedTokenAsync();
-
-        try
+        if (string.IsNullOrWhiteSpace(clientId))
         {
-            await _accountApi.DeleteServiceAccountAsync(
-                serviceAccountId: ssaId,
-                accessToken: token);
+            // A legacy SSA whose app was never added: no credentials can delete it remotely.
+            _logger.LogWarning("SSA {SsaId} isn't linked to an APS app; removing only its stored key.", ssaId);
         }
-        catch (Exception ex) when (IsNotFound(ex))
+        else
         {
-            _logger.LogWarning("SSA {SsaId} not found; treating as already deleted.", ssaId);
+            var token = await GetManagementTokenAsync(clientId);
+
+            try
+            {
+                await _accountApi.DeleteServiceAccountAsync(
+                    serviceAccountId: ssaId,
+                    accessToken: token);
+            }
+            catch (Exception ex) when (IsNotFound(ex))
+            {
+                _logger.LogWarning("SSA {SsaId} not found; treating as already deleted.", ssaId);
+            }
         }
 
         await _keysFileLock.WaitAsync();
@@ -342,6 +406,54 @@ public class SsaService : ISsaService
         }
 
         _logger.LogInformation("Deleted SSA {SsaId}", ssaId);
+    }
+
+    public async Task<int> AdoptLegacySsasAsync(string projectId, string clientId)
+    {
+        var ssaIds = (await GetAllSsaIdsAsync(clientId)).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        await _keysFileLock.WaitAsync();
+        try
+        {
+            var adoptedKeys = 0;
+            foreach (var (ssaId, record) in _keysCache)
+            {
+                if (string.IsNullOrWhiteSpace(record.ClientId) && ssaIds.Contains(ssaId))
+                {
+                    record.ClientId = clientId;
+                    adoptedKeys++;
+                }
+            }
+
+            if (adoptedKeys > 0)
+            {
+                await SaveKeysToFileNoLockAsync();
+                _logger.LogInformation("Linked {Count} stored SSA keys to APS app {ClientId}", adoptedKeys, clientId);
+            }
+        }
+        finally
+        {
+            _keysFileLock.Release();
+        }
+
+        var adoptedAgents = 0;
+        foreach (var agent in await _agentRegistry.GetAgentsByProjectAsync(projectId))
+        {
+            if (string.IsNullOrWhiteSpace(agent.SsaClientId) && ssaIds.Contains(agent.SsaId))
+            {
+                agent.SsaClientId = clientId;
+                await _agentRegistry.UpdateAgentAsync(agent);
+                adoptedAgents++;
+            }
+        }
+
+        if (adoptedAgents > 0)
+        {
+            _logger.LogInformation("Linked {Count} agents in project {ProjectId} to APS app {ClientId}",
+                adoptedAgents, projectId, clientId);
+        }
+
+        return adoptedAgents;
     }
 
     // The ACC "remove project user" endpoint accepts either the ACC project user ID or the user's
@@ -376,6 +488,27 @@ public class SsaService : ISsaService
             };
 
             if (status is System.Net.HttpStatusCode.NotFound or System.Net.HttpStatusCode.Gone)
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    // True when the exception (or its inner exception) carries a 403 Forbidden status from the SSA API.
+    internal static bool IsForbidden(Exception ex)
+    {
+        for (var current = ex; current != null; current = current.InnerException)
+        {
+            var status = current switch
+            {
+                Autodesk.SecureServiceAccount.ServiceApiException e => e.HttpResponseMessage?.StatusCode,
+                HttpRequestException e => e.StatusCode,
+                _ => null,
+            };
+
+            if (status is System.Net.HttpStatusCode.Forbidden)
             {
                 return true;
             }
@@ -479,6 +612,8 @@ public class SsaService : ISsaService
 
     private sealed class SsaKeyRecord
     {
+        // The APS app that owns the SSA. Empty on records stored before per-project apps.
+        public string ClientId { get; set; } = string.Empty;
         public string KeyId { get; set; } = string.Empty;
         public string PrivateKeyPem { get; set; } = string.Empty;
     }

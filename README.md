@@ -70,6 +70,17 @@ Every agent action runs as the agent's own **service account** (SSA), which is c
 - **Project Users** – hub user search uses a 2-legged token with `account:read`, so the APS app must be provisioned as a **custom integration** in the ACC account. Adding users and changing their role or company needs the agent's service account to have **project admin** access (grant it the Project Administration product).
 - **Issues** – using Issues through a service account needs a **Forma Build** subscription on that service account. The ACC Issues API has no delete: agents can close an issue by setting its status to `closed`, but deleting it must be done in the ACC UI.
 
+#### APS apps for assistants
+
+Service accounts are owned by APS apps that project admins add per project under **Settings → Assistants → APS apps for assistants**. No `appsettings.json` entry is needed.
+
+- Each app must be a **server-to-server** APS app. Its client ID and secret are checked against APS when you add the app or update its secret, and a client ID can be registered in one project only.
+- One APS app can own at most **10 service accounts**, so each app adds room for 10 assistants. New assistants are created in the first app that has a free slot. When every app is full, add another app to create more assistants.
+- **Update secret** replaces a rotated client secret. **Remove** deletes every assistant (and its service account) that the app owns.
+- Client secrets are stored in **plaintext** in `Data/ssa-apps.json`, like the other files in `Data/`. The directory is git-ignored and excluded from publish, but protect it on any host that runs the sample.
+
+> **Upgrading from the single `SsaApp` configuration:** the `SsaApp` section in `appsettings.json` is no longer read. In each project, add your former `SsaApp` client ID and secret under **Settings → Assistants**. Existing assistants whose service accounts belong to that app are linked to it automatically. Assistants that aren't linked can't chat and should be deleted.
+
 ---
 
 ### Steps to build and run the sample locally
@@ -140,6 +151,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - Job status for Create Revit Models, Manage Revit Links, and Create Sheets is stored in-memory; restarting the application clears pending job history.
 - AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This is a **demo-only file store** — all data is lost if the files are deleted, and it is not suitable for concurrent multi-user production deployments. Production forks should replace `AgentConversationService` with a database-backed implementation.
 - In the AI Assistants feature, users see the assistants configured for their project roles. Assistants are configured by Project Administrators under **Settings → Assistants**.
+- Each APS app can own at most 10 assistant service accounts. Add more APS apps to a project under **Settings → Assistants** to create more assistants. APS app secrets are stored in plaintext in `Data/ssa-apps.json`.
 - AI Assistants can't delete issues, delete or rename folders, manage folder permissions, or remove project users.
 - The Automation API activity must already exist and be published before running the sample.
 - Ollama must be running and accessible for the AI Assistants feature to function.

@@ -6,6 +6,8 @@
 @inject IProjectRoleService RoleService
 @inject IAgentRegistryService AgentRegistryService
 @inject ISsaService SsaService
+@inject ISsaAppStore SsaAppStore
+@inject IAPSAuthenticationService AuthService
 @inject IToolCatalogService ToolCatalogService
 @inject ICompanyService CompanyService
 @inject ISelectedProjectService SelectedProjectService
@@ -51,22 +53,75 @@
             <FluentMessageBar Intent="MessageIntent.Success">@_infoMessage</FluentMessageBar>
         }
 
+        <FluentCard Style="padding: 24px;">
+            <FluentStack Orientation="Orientation.Vertical" VerticalGap="12">
+                <h3 style="margin: 0;">APS apps for assistants</h3>
+                <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                    Each assistant is a secure service account (SSA) owned by one of these apps. Each app must be a
+                    server-to-server app and holds at most @MaxSsasPerApp SSAs, so add more apps to create more assistants.
+                </p>
+
+                @if (_apps.Any())
+                {
+                    <FluentDataGrid Items="@_apps.AsQueryable()"
+                                    ResizableColumns="true"
+                                    RowSize="DataGridRowSize.Medium"
+                                    Style="width: 100%;">
+                        <PropertyColumn Property="@(a => a.DisplayName)" Sortable="true" Title="Name" />
+                        <PropertyColumn Property="@(a => a.MaskedClientId)" Title="Client ID" />
+                        <TemplateColumn Title="SSAs">
+                            @(SsaCountText(context))
+                        </TemplateColumn>
+                        <PropertyColumn Property="@(a => a.CreatedAt)" Sortable="true" Title="Created At" Format="yyyy-MM-dd HH:mm" />
+                        <TemplateColumn Title="Actions">
+                            <FluentButton Appearance="Appearance.Lightweight"
+                                          IconStart="@(new Icons.Regular.Size16.Key())"
+                                          OnClick="@(() => OpenUpdateSecret(context))"
+                                          Title="Update the client secret">
+                                Update secret
+                            </FluentButton>
+                            <FluentButton Appearance="Appearance.Lightweight"
+                                          IconStart="@(new Icons.Regular.Size16.Delete())"
+                                          OnClick="@(() => OpenRemoveApp(context))"
+                                          Title="Remove the app and its assistants">
+                                Remove
+                            </FluentButton>
+                        </TemplateColumn>
+                    </FluentDataGrid>
+                }
+                else
+                {
+                    <FluentMessageBar Intent="MessageIntent.Warning">
+                        No APS app is configured for this project. Add an APS app before creating assistants.
+                    </FluentMessageBar>
+                }
+
+                <div>
+                    <FluentButton Appearance="Appearance.Outline"
+                                  IconStart="@(new Icons.Regular.Size20.Add())"
+                                  OnClick="OpenAddApp">
+                        Add APS app
+                    </FluentButton>
+                </div>
+            </FluentStack>
+        </FluentCard>
+
         <FluentStack Orientation="Orientation.Horizontal" HorizontalGap="8" VerticalAlignment="VerticalAlignment.Center">
             <FluentButton Appearance="Appearance.Accent"
                           IconStart="@(new Icons.Regular.Size20.Add())"
                           OnClick="OpenCreateWizard"
-                          Disabled="@(_agents.Count >= MaxAgents)"
-                          Title="@(_agents.Count >= MaxAgents ? "Maximum 10 assistants reached (APS SSA limit)" : "Create a new assistant")">
+                          Disabled="@(!CanCreateAssistant)"
+                          Title="@CreateAssistantTitle">
                 Create New Assistant
             </FluentButton>
             <span style="color: var(--neutral-foreground-hint); font-size: 13px;">
-                @_agents.Count / @MaxAgents assistants configured
+                @_agents.Count assistants configured &middot; @FreeSsaSlots free SSA slots across @_apps.Count APS app(s)
             </span>
             <FluentButton Appearance="Appearance.Outline"
                           IconStart="@(new Icons.Regular.Size20.Delete())"
                           Disabled="@_deletingAllSsas"
                           OnClick="DeleteAllSsaAccounts"
-                          Title="TEMPORARY: deletes every SSA account on this app. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
+                          Title="TEMPORARY: deletes every SSA account on this project's apps. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
                 @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
             </FluentButton>
         </FluentStack>
@@ -265,8 +320,150 @@
     </FluentDialogFooter>
 </FluentDialog>
 
+<FluentDialog @bind-Hidden="@HideAddApp"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 520px; max-width: 90vw;">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Add APS app</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            @if (!string.IsNullOrEmpty(_appDialogError))
+            {
+                <FluentMessageBar Intent="MessageIntent.Error">@_appDialogError</FluentMessageBar>
+            }
+            <p style="color: var(--neutral-foreground-hint); margin: 0;">
+                Use a server-to-server APS app. The credentials are checked against APS before the app is saved.
+            </p>
+            <FluentTextField @bind-Value="_newAppDisplayName"
+                             Label="Display name (optional)"
+                             Disabled="@_appDialogBusy"
+                             Style="width: 100%;" />
+            <FluentTextField @bind-Value="_newAppClientId"
+                             Label="Client ID"
+                             Disabled="@_appDialogBusy"
+                             Style="width: 100%;" />
+            <FluentTextField @bind-Value="_newAppSecret"
+                             TextFieldType="TextFieldType.Password"
+                             Label="Client secret"
+                             Disabled="@_appDialogBusy"
+                             Style="width: 100%;" />
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral"
+                      Disabled="@_appDialogBusy"
+                      OnClick="@(() => HideAddApp = true)">
+            Cancel
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      Loading="@_appDialogBusy"
+                      Disabled="@(_appDialogBusy || string.IsNullOrWhiteSpace(_newAppClientId) || string.IsNullOrWhiteSpace(_newAppSecret))"
+                      OnClick="SaveNewApp">
+            Save
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<FluentDialog @bind-Hidden="@HideUpdateSecret"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 520px; max-width: 90vw;">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Update secret</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            @if (!string.IsNullOrEmpty(_appDialogError))
+            {
+                <FluentMessageBar Intent="MessageIntent.Error">@_appDialogError</FluentMessageBar>
+            }
+            <FluentTextField Value="@(_appToUpdate?.MaskedClientId)"
+                             Label="Client ID"
+                             ReadOnly="true"
+                             Style="width: 100%;" />
+            <FluentTextField @bind-Value="_updatedSecret"
+                             TextFieldType="TextFieldType.Password"
+                             Label="New client secret"
+                             Disabled="@_appDialogBusy"
+                             Style="width: 100%;" />
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral"
+                      Disabled="@_appDialogBusy"
+                      OnClick="@(() => HideUpdateSecret = true)">
+            Cancel
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      Loading="@_appDialogBusy"
+                      Disabled="@(_appDialogBusy || string.IsNullOrWhiteSpace(_updatedSecret))"
+                      OnClick="SaveUpdatedSecret">
+            Save
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
+<FluentDialog @bind-Hidden="@_hideRemoveApp"
+              Modal="true"
+              TrapFocus="true"
+              PreventScroll="true"
+              Style="min-width: 520px; max-width: 90vw;">
+    <FluentDialogHeader>
+        <FluentLabel Typo="Typography.PaneHeader">Remove APS app</FluentLabel>
+    </FluentDialogHeader>
+    <FluentDialogBody>
+        <FluentStack Orientation="Orientation.Vertical" VerticalGap="16">
+            @if (!string.IsNullOrEmpty(_appDialogError))
+            {
+                <FluentMessageBar Intent="MessageIntent.Error">@_appDialogError</FluentMessageBar>
+            }
+            <FluentMessageBar Intent="MessageIntent.Warning">
+                Removing this APS app will delete all assistants assigned to it.
+            </FluentMessageBar>
+            <div>
+                <strong>App:</strong>
+                <span style="margin-left: 8px;">@AppLabel(_appToRemove)</span>
+            </div>
+            @if (AgentsOnAppToRemove.Any())
+            {
+                <div>
+                    <strong>Assistants that will be deleted:</strong>
+                    <ul style="margin: 4px 0 0 0;">
+                        @foreach (var agent in AgentsOnAppToRemove)
+                        {
+                            <li>@agent.AgentName</li>
+                        }
+                    </ul>
+                </div>
+            }
+            else
+            {
+                <span style="color: var(--neutral-foreground-hint);">No assistants in this project are assigned to this app.</span>
+            }
+        </FluentStack>
+    </FluentDialogBody>
+    <FluentDialogFooter>
+        <FluentButton Appearance="Appearance.Neutral"
+                      Disabled="@_appDialogBusy"
+                      OnClick="@(() => _hideRemoveApp = true)">
+            Cancel
+        </FluentButton>
+        <FluentButton Appearance="Appearance.Accent"
+                      IconStart="@(new Icons.Regular.Size16.Delete())"
+                      Loading="@_appDialogBusy"
+                      Disabled="@_appDialogBusy"
+                      OnClick="ConfirmRemoveApp">
+            Delete
+        </FluentButton>
+    </FluentDialogFooter>
+</FluentDialog>
+
 @code {
-    private const int MaxAgents = 10;
+    private const int MaxSsasPerApp = ApsSamples.Services.SsaService.MaxSsasPerApp;
 
     // Keys must match the ACC/Forma "productKeys" enum from the admin-projects-project-Id-users-POST
     // endpoint (https://aps.autodesk.com/en/docs/acc/v1/reference/http/admin-projects-project-Id-users-POST/).
@@ -298,6 +495,64 @@
     private List<ProjectRoleInfo> _availableRoles = new();
     private List<ToolDescriptor> _allTools = new();
     private List<CompanyInfo> _companies = new();
+
+    // The project's APS apps and each app's live SSA count (null when the count failed).
+    private List<SsaAppCredential> _apps = new();
+    private Dictionary<string, int?> _ssaCounts = new(StringComparer.OrdinalIgnoreCase);
+
+    // Shared by the add, update-secret and remove app dialogs; only one is open at a time.
+    private bool _appDialogBusy;
+    private string? _appDialogError;
+
+    // Secrets live only in these fields while a dialog is open; closing a dialog clears them.
+    private bool _hideAddApp = true;
+    private string _newAppDisplayName = string.Empty;
+    private string _newAppClientId = string.Empty;
+    private string _newAppSecret = string.Empty;
+
+    private bool _hideUpdateSecret = true;
+    private SsaAppCredential? _appToUpdate;
+    private string _updatedSecret = string.Empty;
+
+    private bool _hideRemoveApp = true;
+    private SsaAppCredential? _appToRemove;
+
+    private bool HideAddApp
+    {
+        get => _hideAddApp;
+        set
+        {
+            _hideAddApp = value;
+            if (value) _newAppSecret = string.Empty;
+        }
+    }
+
+    private bool HideUpdateSecret
+    {
+        get => _hideUpdateSecret;
+        set
+        {
+            _hideUpdateSecret = value;
+            if (value) _updatedSecret = string.Empty;
+        }
+    }
+
+    // Apps whose count is unknown are treated as having room; CreateSsaAsync re-counts anyway.
+    private bool CanCreateAssistant =>
+        _apps.Any(a => _ssaCounts.GetValueOrDefault(a.ClientId) is not int used || used < MaxSsasPerApp);
+
+    private string CreateAssistantTitle =>
+        !_apps.Any() ? "Add an APS app before creating assistants"
+        : !CanCreateAssistant ? $"Every APS app has {MaxSsasPerApp} SSAs. Add another APS app to create more assistants."
+        : "Create a new assistant";
+
+    private int FreeSsaSlots =>
+        _ssaCounts.Values.OfType<int>().Sum(used => Math.Max(0, MaxSsasPerApp - used));
+
+    private IEnumerable<AgentDefinition> AgentsOnAppToRemove =>
+        _appToRemove is null
+            ? Enumerable.Empty<AgentDefinition>()
+            : _agents.Where(a => string.Equals(a.SsaClientId, _appToRemove.ClientId, StringComparison.OrdinalIgnoreCase));
 
     private bool _hideWizard = true;
     private int _wizardStep = 1;
@@ -371,6 +626,7 @@
             _allRoles = (await RoleService.GetAllProjectRolesAsync(_projectId!, accessToken)).ToList();
             _allTools = ToolCatalogService.GetAllTools().ToList();
             _companies = (await CompanyService.GetProjectCompaniesAsync(_projectId!, accessToken)).ToList();
+            await LoadAppsAsync();
 
             RefreshAvailableRoles();
         }
@@ -381,6 +637,228 @@
         finally
         {
             _isLoading = false;
+            StateHasChanged();
+        }
+    }
+
+    // One GET /service-accounts call per app. Counted one at a time because the per-app
+    // management token cache in APSAuthenticationService isn't safe for concurrent use.
+    private async Task LoadAppsAsync()
+    {
+        _apps = SsaAppStore.GetByProject(_projectId!).ToList();
+        var counts = new Dictionary<string, int?>(StringComparer.OrdinalIgnoreCase);
+        foreach (var app in _apps)
+        {
+            try
+            {
+                counts[app.ClientId] = await SsaService.GetSsaCountAsync(app.ClientId);
+            }
+            catch (Exception ex)
+            {
+                counts[app.ClientId] = null;
+                Console.WriteLine($"Failed to count SSAs for app {app.MaskedClientId}: {ex.Message}");
+            }
+        }
+        _ssaCounts = counts;
+    }
+
+    // Reloads agents and apps after any change that can move an SSA count.
+    private async Task RefreshAgentsAndAppsAsync()
+    {
+        _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
+        RefreshAvailableRoles();
+        await LoadAppsAsync();
+    }
+
+    private string SsaCountText(SsaAppCredential app) =>
+        _ssaCounts.GetValueOrDefault(app.ClientId) is int used
+            ? $"{used} / {MaxSsasPerApp} SSAs"
+            : "unavailable";
+
+    private static string AppLabel(SsaAppCredential? app) =>
+        app is null ? string.Empty
+        : string.IsNullOrWhiteSpace(app.DisplayName) ? app.MaskedClientId
+        : $"{app.DisplayName} ({app.MaskedClientId})";
+
+    private void OpenAddApp()
+    {
+        _appDialogError = null;
+        _appDialogBusy = false;
+        _newAppDisplayName = string.Empty;
+        _newAppClientId = string.Empty;
+        _newAppSecret = string.Empty;
+        HideAddApp = false;
+    }
+
+    private async Task SaveNewApp()
+    {
+        var displayName = _newAppDisplayName.Trim();
+        var clientId = _newAppClientId.Trim();
+        var secret = _newAppSecret.Trim();
+        if (string.IsNullOrEmpty(clientId) || string.IsNullOrEmpty(secret)) return;
+
+        _appDialogBusy = true;
+        _appDialogError = null;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            if (SsaAppStore.Get(clientId) is not null)
+            {
+                _appDialogError = "This client ID is already registered for a project.";
+                return;
+            }
+
+            // Throws InvalidOperationException with the APS error when the credentials are wrong.
+            await AuthService.GetSsaAppTwoLeggedTokenAsync(clientId, secret);
+
+            var added = await SsaAppStore.TryAddAsync(new SsaAppCredential
+            {
+                ProjectId = _projectId!,
+                ClientId = clientId,
+                ClientSecret = secret,
+                DisplayName = displayName,
+                CreatedAt = DateTime.UtcNow
+            });
+            if (!added)
+            {
+                _appDialogError = "This client ID is already registered for a project.";
+                return;
+            }
+
+            var label = string.IsNullOrEmpty(displayName) ? "APS app" : $"APS app \"{displayName}\"";
+            try
+            {
+                var adopted = await SsaService.AdoptLegacySsasAsync(_projectId!, clientId);
+                _infoMessage = adopted > 0
+                    ? $"{label} added. {adopted} existing assistant(s) linked to it."
+                    : $"{label} added.";
+            }
+            catch (Exception ex)
+            {
+                _infoMessage = $"{label} added, but existing assistants couldn't be linked to it: {ex.Message}";
+            }
+
+            HideAddApp = true;
+            await RefreshAgentsAndAppsAsync();
+        }
+        catch (Exception ex)
+        {
+            _appDialogError = $"Failed to add APS app: {ex.Message}";
+        }
+        finally
+        {
+            _appDialogBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenUpdateSecret(SsaAppCredential app)
+    {
+        _appDialogError = null;
+        _appDialogBusy = false;
+        _appToUpdate = app;
+        _updatedSecret = string.Empty;
+        HideUpdateSecret = false;
+    }
+
+    private async Task SaveUpdatedSecret()
+    {
+        var secret = _updatedSecret.Trim();
+        if (_appToUpdate is null || string.IsNullOrEmpty(secret)) return;
+
+        _appDialogBusy = true;
+        _appDialogError = null;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        try
+        {
+            await AuthService.GetSsaAppTwoLeggedTokenAsync(_appToUpdate.ClientId, secret);
+
+            if (!await SsaAppStore.UpdateSecretAsync(_appToUpdate.ClientId, secret))
+            {
+                _appDialogError = "This APS app is no longer registered.";
+                return;
+            }
+
+            _infoMessage = $"Secret updated for {AppLabel(_appToUpdate)}.";
+            HideUpdateSecret = true;
+            await LoadAppsAsync();
+        }
+        catch (Exception ex)
+        {
+            _appDialogError = $"Failed to update secret: {ex.Message}";
+        }
+        finally
+        {
+            _appDialogBusy = false;
+            StateHasChanged();
+        }
+    }
+
+    private void OpenRemoveApp(SsaAppCredential app)
+    {
+        _appDialogError = null;
+        _appDialogBusy = false;
+        _appToRemove = app;
+        _hideRemoveApp = false;
+    }
+
+    // Deletes every assistant on the app the same way DeleteAgent does, and removes the app only
+    // when all of them succeed, so a failed removal can be retried.
+    private async Task ConfirmRemoveApp()
+    {
+        if (_appToRemove is null) return;
+        var app = _appToRemove;
+
+        _appDialogBusy = true;
+        _appDialogError = null;
+        _errorMessage = null;
+        _infoMessage = null;
+        StateHasChanged();
+
+        var deleted = 0;
+        try
+        {
+            foreach (var agent in AgentsOnAppToRemove.ToList())
+            {
+                try
+                {
+                    if (!string.IsNullOrEmpty(agent.SsaId))
+                    {
+                        await SsaService.DeprovisionSsaAsync(
+                            agent.ProjectId,
+                            app.ClientId,
+                            agent.SsaId,
+                            agent.ProjectUserId,
+                            UserSession.AccessToken ?? string.Empty);
+                    }
+                    await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                    deleted++;
+                }
+                catch (Exception ex)
+                {
+                    _appDialogError = $"Failed to delete assistant \"{agent.AgentName}\": {ex.Message}. The APS app was kept, so you can retry.";
+                    return;
+                }
+            }
+
+            await SsaAppStore.RemoveAsync(app.ClientId);
+            _hideRemoveApp = true;
+            _infoMessage = $"APS app {AppLabel(app)} removed with {deleted} assistant(s).";
+        }
+        catch (Exception ex)
+        {
+            _appDialogError = $"Failed to remove APS app: {ex.Message}";
+        }
+        finally
+        {
+            await RefreshAgentsAndAppsAsync();
+            _appDialogBusy = false;
             StateHasChanged();
         }
     }
@@ -501,9 +979,9 @@
         {
             var agentName = $"{_selectedRoleName} Assistant";
 
-            var ssaId = await SsaService.CreateSsaAsync(agentName);
-            var keyId = await SsaService.StoreSsaKeyAsync(ssaId);
-            var ssaEmail = await SsaService.GetSsaEmailAsync(ssaId);
+            var (ssaClientId, ssaId) = await SsaService.CreateSsaAsync(_projectId!, agentName);
+            var keyId = await SsaService.StoreSsaKeyAsync(ssaClientId, ssaId);
+            var ssaEmail = await SsaService.GetSsaEmailAsync(ssaClientId, ssaId);
 
             var selectedRole = _allRoles.FirstOrDefault(r =>
                 string.Equals(r.RoleName, _selectedRoleName, StringComparison.OrdinalIgnoreCase));
@@ -528,6 +1006,7 @@
                 EnabledProductKeys = _selectedProductKeys.ToList(),
                 CompanyId = _selectedCompanyId,
                 SsaId = ssaId,
+                SsaClientId = ssaClientId,
                 SsaKeyId = keyId,
                 SsaEmail = ssaEmail,
                 ProjectUserId = projectUserId,
@@ -536,8 +1015,7 @@
 
             await AgentRegistryService.CreateAgentAsync(agent);
 
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
-            RefreshAvailableRoles();
+            await RefreshAgentsAndAppsAsync();
 
             _hideWizard = true;
             _infoMessage = $"Assistant \"{agentName}\" created successfully.";
@@ -567,14 +1045,14 @@
                 // Removes the robot user from the project first, then deletes the SSA.
                 await SsaService.DeprovisionSsaAsync(
                     agent.ProjectId,
+                    agent.SsaClientId,
                     agent.SsaId,
                     agent.ProjectUserId,
                     UserSession.AccessToken ?? string.Empty);
             }
             await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
 
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
-            RefreshAvailableRoles();
+            await RefreshAgentsAndAppsAsync();
             _infoMessage = $"Assistant \"{agent.AgentName}\" deleted.";
         }
         catch (Exception ex)
@@ -588,8 +1066,8 @@
         }
     }
 
-    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
-    // Every SSA on the app is deleted. Robot users are removed from the project only for SSAs tracked
+    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this project's apps. Remove before ship.
+    // Every SSA on each app is deleted. Robot users are removed from the project only for SSAs tracked
     // by an agent in this project; untracked SSAs are deleted directly because their project is unknown.
     private async Task DeleteAllSsaAccounts()
     {
@@ -600,41 +1078,45 @@
 
         try
         {
-            var ssaIds = await SsaService.GetAllSsaIdsAsync();
             var deleted = 0;
             var failed = 0;
             var untracked = 0;
 
-            foreach (var ssaId in ssaIds)
+            foreach (var app in SsaAppStore.GetByProject(_projectId!))
             {
-                try
+                var ssaIds = await SsaService.GetAllSsaIdsAsync(app.ClientId);
+
+                foreach (var ssaId in ssaIds)
                 {
-                    var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
-                    if (agent is null)
+                    try
                     {
-                        await SsaService.DeleteSsaAsync(ssaId);
-                        untracked++;
+                        var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
+                        if (agent is null)
+                        {
+                            await SsaService.DeleteSsaAsync(app.ClientId, ssaId);
+                            untracked++;
+                        }
+                        else
+                        {
+                            await SsaService.DeprovisionSsaAsync(
+                                agent.ProjectId,
+                                app.ClientId,
+                                agent.SsaId,
+                                agent.ProjectUserId,
+                                UserSession.AccessToken ?? string.Empty);
+                            await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                        }
+                        deleted++;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        await SsaService.DeprovisionSsaAsync(
-                            agent.ProjectId,
-                            agent.SsaId,
-                            agent.ProjectUserId,
-                            UserSession.AccessToken ?? string.Empty);
-                        await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                        failed++;
+                        Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
                     }
-                    deleted++;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
                 }
             }
 
-            _agents = (await AgentRegistryService.GetAgentsByProjectAsync(_projectId!)).ToList();
-            RefreshAvailableRoles();
+            await RefreshAgentsAndAppsAsync();
 
             _infoMessage = $"Deleted {deleted} SSA account(s) ({untracked} without project removal), {failed} failed.";
         }
