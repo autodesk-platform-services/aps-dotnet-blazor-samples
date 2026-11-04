@@ -6,6 +6,7 @@
 @inject IProjectRoleService RoleService
 @inject IAgentRegistryService AgentRegistryService
 @inject ISsaService SsaService
+@inject ISsaAppStore SsaAppStore
 @inject IToolCatalogService ToolCatalogService
 @inject ICompanyService CompanyService
 @inject ISelectedProjectService SelectedProjectService
@@ -66,7 +67,7 @@
                           IconStart="@(new Icons.Regular.Size20.Delete())"
                           Disabled="@_deletingAllSsas"
                           OnClick="DeleteAllSsaAccounts"
-                          Title="TEMPORARY: deletes every SSA account on this app. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
+                          Title="TEMPORARY: deletes every SSA account on this project's apps. SSAs tracked by an assistant in this project are removed from the project first and their assistant is deleted.">
                 @(_deletingAllSsas ? "Deleting all SSAs..." : "DEV: Delete All SSA Accounts")
             </FluentButton>
         </FluentStack>
@@ -501,9 +502,9 @@
         {
             var agentName = $"{_selectedRoleName} Assistant";
 
-            var ssaId = await SsaService.CreateSsaAsync(agentName);
-            var keyId = await SsaService.StoreSsaKeyAsync(ssaId);
-            var ssaEmail = await SsaService.GetSsaEmailAsync(ssaId);
+            var (ssaClientId, ssaId) = await SsaService.CreateSsaAsync(_projectId!, agentName);
+            var keyId = await SsaService.StoreSsaKeyAsync(ssaClientId, ssaId);
+            var ssaEmail = await SsaService.GetSsaEmailAsync(ssaClientId, ssaId);
 
             var selectedRole = _allRoles.FirstOrDefault(r =>
                 string.Equals(r.RoleName, _selectedRoleName, StringComparison.OrdinalIgnoreCase));
@@ -528,6 +529,7 @@
                 EnabledProductKeys = _selectedProductKeys.ToList(),
                 CompanyId = _selectedCompanyId,
                 SsaId = ssaId,
+                SsaClientId = ssaClientId,
                 SsaKeyId = keyId,
                 SsaEmail = ssaEmail,
                 ProjectUserId = projectUserId,
@@ -567,6 +569,7 @@
                 // Removes the robot user from the project first, then deletes the SSA.
                 await SsaService.DeprovisionSsaAsync(
                     agent.ProjectId,
+                    agent.SsaClientId,
                     agent.SsaId,
                     agent.ProjectUserId,
                     UserSession.AccessToken ?? string.Empty);
@@ -588,8 +591,8 @@
         }
     }
 
-    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this app. Remove before ship.
-    // Every SSA on the app is deleted. Robot users are removed from the project only for SSAs tracked
+    // TEMPORARY: dev-only cleanup button to wipe every SSA account on this project's apps. Remove before ship.
+    // Every SSA on each app is deleted. Robot users are removed from the project only for SSAs tracked
     // by an agent in this project; untracked SSAs are deleted directly because their project is unknown.
     private async Task DeleteAllSsaAccounts()
     {
@@ -600,36 +603,41 @@
 
         try
         {
-            var ssaIds = await SsaService.GetAllSsaIdsAsync();
             var deleted = 0;
             var failed = 0;
             var untracked = 0;
 
-            foreach (var ssaId in ssaIds)
+            foreach (var app in SsaAppStore.GetByProject(_projectId!))
             {
-                try
+                var ssaIds = await SsaService.GetAllSsaIdsAsync(app.ClientId);
+
+                foreach (var ssaId in ssaIds)
                 {
-                    var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
-                    if (agent is null)
+                    try
                     {
-                        await SsaService.DeleteSsaAsync(ssaId);
-                        untracked++;
+                        var agent = _agents.FirstOrDefault(a => a.SsaId == ssaId);
+                        if (agent is null)
+                        {
+                            await SsaService.DeleteSsaAsync(app.ClientId, ssaId);
+                            untracked++;
+                        }
+                        else
+                        {
+                            await SsaService.DeprovisionSsaAsync(
+                                agent.ProjectId,
+                                app.ClientId,
+                                agent.SsaId,
+                                agent.ProjectUserId,
+                                UserSession.AccessToken ?? string.Empty);
+                            await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                        }
+                        deleted++;
                     }
-                    else
+                    catch (Exception ex)
                     {
-                        await SsaService.DeprovisionSsaAsync(
-                            agent.ProjectId,
-                            agent.SsaId,
-                            agent.ProjectUserId,
-                            UserSession.AccessToken ?? string.Empty);
-                        await AgentRegistryService.DeleteAgentAsync(agent.AgentId);
+                        failed++;
+                        Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
                     }
-                    deleted++;
-                }
-                catch (Exception ex)
-                {
-                    failed++;
-                    Console.WriteLine($"Failed to delete SSA {ssaId}: {ex.Message}");
                 }
             }
 
