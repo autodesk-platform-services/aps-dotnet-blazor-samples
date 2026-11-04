@@ -54,6 +54,7 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<IAgentTaskService, AgentTaskService>();
         services.AddSingleton<IAgentConversationService, AgentConversationService>();
         services.AddSingleton<IAgentRegistryService, AgentRegistryService>();
+        services.AddSingleton<ISsaAppStore, SsaAppStore>();
         services.AddSingleton<IToolCatalogService, ToolCatalogService>();
         services.AddSingleton<ISelectedProjectService, SelectedProjectService>();
         services.AddSingleton<IRevitWebhookTokenService, RevitWebhookTokenService>();
