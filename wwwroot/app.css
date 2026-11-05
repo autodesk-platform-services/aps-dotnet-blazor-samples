@@ -17,6 +17,29 @@ body {
     border-right: 1px solid var(--neutral-stroke-rest);
 }
 
+@media (min-width: 601px) {
+    .navmenu {
+        display: flex;
+        flex-direction: column;
+    }
+
+    nav.sitenav {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #main-menu {
+        flex: 1 1 auto;
+        display: flex;
+        flex-direction: column;
+    }
+
+    #main-menu > .navmenu-bottom {
+        margin-top: auto;
+    }
+}
+
 .main {
     min-height: calc(100dvh - 86px);
     color: var(--neutral-foreground-rest);

@@ -55,6 +55,7 @@ public static class AutodeskServiceExtensions
         services.AddSingleton<IAgentTaskService, AgentTaskService>();
         services.AddSingleton<IAgentConversationService, AgentConversationService>();
         services.AddSingleton<IAgentRegistryService, AgentRegistryService>();
+        services.AddSingleton<ISsaAppStore, SsaAppStore>();
         services.AddSingleton<IToolCatalogService, ToolCatalogService>();
         services.AddSingleton<ISelectedProjectService, SelectedProjectService>();
         services.AddSingleton<IRevitWebhookTokenService, RevitWebhookTokenService>();
@@ -104,7 +105,6 @@ public static class AutodeskServiceExtensions
         {
             return new APSAuthenticationService(
                 sp.GetRequiredService<AuthenticationClient>(),
-                sp.GetRequiredService<IConfiguration>(),
                 clientId,
                 clientSecret,
                 callbackUrl);
@@ -115,12 +115,8 @@ public static class AutodeskServiceExtensions
         services.AddScoped<AdminClient>();
         services.AddScoped<WebhooksClient>();
 
-        // SSA management API clients. Credentials for the SSA App are validated here to fail
-        // fast on misconfiguration; token minting still happens lazily in APSAuthenticationService.
-        var ssaConfig = configuration.GetSection("SsaApp");
-        _ = ssaConfig["ClientId"] ?? throw new InvalidOperationException("SsaApp:ClientId is required");
-        _ = ssaConfig["ClientSecret"] ?? throw new InvalidOperationException("SsaApp:ClientSecret is required");
-
+        // SSA management API clients. They are app-agnostic: each call passes a token minted with
+        // the credentials of the owning app, which project admins add in Settings > Assistants.
         services.AddSingleton(sp => new AccountManagementApi(sp.GetRequiredService<SDKManager>()));
         services.AddSingleton(sp => new KeyManagementApi(sp.GetRequiredService<SDKManager>()));
 

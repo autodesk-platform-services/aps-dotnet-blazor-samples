@@ -71,6 +71,17 @@ Every agent action runs as the agent's own **service account** (SSA), which is c
 - **Issues** – using Issues through a service account needs a **Forma Build** subscription on that service account. The ACC Issues API has no delete: agents can close an issue by setting its status to `closed`, but deleting it must be done in the ACC UI.
 - **Delegation** – an assistant with these tools (for example the BIM Manager assistant) can list the other assistants in the project and hand tasks to them. Delegation is asynchronous: the assistant replies at once, and each delegate runs the task in the background as itself, with its own service account and its own enabled tools. Delegates can't delegate further. A task can depend on earlier delegated tasks in the same conversation; it waits until they complete and fails if one of them fails. Results and failures are posted in the originating conversation by the delegate and shown in the Tasks panel. Each delegate needs its own service account, project access, and the tool modules the task requires.
 
+#### APS apps for assistants
+
+Service accounts are owned by APS apps that project admins add per project under **Settings → Assistants → APS apps for assistants**. No `appsettings.json` entry is needed.
+
+- Each app must be a **server-to-server** APS app. Its client ID and secret are checked against APS when you add the app or update its secret, and a client ID can be registered in one project only.
+- One APS app can own at most **10 service accounts**, so each app adds room for 10 assistants. New assistants are created in the first app that has a free slot. When every app is full, add another app to create more assistants.
+- **Update secret** replaces a rotated client secret. **Remove** deletes every assistant (and its service account) that the app owns.
+- Client secrets are stored in **plaintext** in `Data/ssa-apps.json`, like the other files in `Data/`. The directory is git-ignored and excluded from publish, but protect it on any host that runs the sample.
+
+> **Upgrading from the single `SsaApp` configuration:** the `SsaApp` section in `appsettings.json` is no longer read. In each project, add your former `SsaApp` client ID and secret under **Settings → Assistants**. Existing assistants whose service accounts belong to that app are linked to it automatically. Assistants that aren't linked can't chat and should be deleted.
+
 ---
 
 ### Steps to build and run the sample locally
@@ -144,6 +155,7 @@ When deploying to a hosting environment (e.g. Azure App Service):
 - Job status for Create Revit Models, Manage Revit Links, and Create Sheets is stored in-memory; restarting the application clears pending job history.
 - AI Assistants conversations and tasks are persisted to JSON files in the `Data/` directory (`agent-conversations.json`, `agent-tasks.json`). This is a **demo-only file store** — all data is lost if the files are deleted, and it is not suitable for concurrent multi-user production deployments. Production forks should replace `AgentConversationService` with a database-backed implementation.
 - In the AI Assistants feature, users see the assistants configured for their project roles. Assistants are configured by Project Administrators under **Settings → Assistants**.
+- Each APS app can own at most 10 assistant service accounts. Add more APS apps to a project under **Settings → Assistants** to create more assistants. APS app secrets are stored in plaintext in `Data/ssa-apps.json`.
 - AI Assistants can't delete issues, delete or rename folders, manage folder permissions, or remove project users.
 - The delegation queue is in memory. After a restart, pending delegated tasks are queued again and tasks that were running are marked failed ("Interrupted by an app restart."), so their work is not silently repeated. At most two delegated tasks run at once, each limited to 30 minutes. Multi-step delegation depends on how well the local model calls tools.
 - The Automation API activity must already exist and be published before running the sample.

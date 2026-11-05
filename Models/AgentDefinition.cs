@@ -11,6 +11,7 @@ public class AgentDefinition
     public List<string> EnabledProductKeys { get; set; } = new();
     public string CompanyId { get; set; } = string.Empty;
     public string SsaId { get; set; } = string.Empty;
+    public string SsaClientId { get; set; } = string.Empty;
     public string SsaKeyId { get; set; } = string.Empty;
     public string SsaEmail { get; set; } = string.Empty;
     public string ProjectUserId { get; set; } = string.Empty;

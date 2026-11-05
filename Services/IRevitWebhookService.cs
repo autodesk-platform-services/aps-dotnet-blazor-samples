@@ -6,8 +6,8 @@ public interface IRevitWebhookService
 {
     // Subscribes a Revit Cloud Worksharing model (lineageUrn is the Data Management item id) to
     // model.publish or model.sync. Throws InvalidOperationException with a user-readable message
-    // when the subscription can't be created (missing configuration, no stored token, extraction
-    // not ready, ...).
+    // when the subscription can't be created (missing configuration, no stored token, no AEC Data
+    // Model element group for the model yet, ...).
     Task<RevitWebhookSubscription> SubscribeAsync(
         string userId,
         string projectId,
