@@ -8,4 +8,5 @@ public static class ToolModules
     public const string ProjectUsers = "Project Users";
     public const string Issues = "Issues";
     public const string RevitAutomation = "Revit Automation";
+    public const string Delegation = "Delegation";
 }

@@ -22,7 +22,8 @@ public class ToolCatalogServiceTests
             new RevitModelTools(null!, null!, context, null!, null!, null!, null!, null!, null!),
             new FolderTools(null!, context),
             new ProjectUserTools(null!, null!, null!, context),
-            new IssueTools(null!, null!, context));
+            new IssueTools(null!, null!, context),
+            new DelegationTools(context, null!, null!, null!, null!, null!));
     }
 
     private static readonly ToolCatalogService Catalog = new();
@@ -48,6 +49,9 @@ public class ToolCatalogServiceTests
         { "create-issue", "CreateIssue" },
         { "update-issue", "UpdateIssue" },
         { "add-issue-comment", "AddIssueComment" },
+        { "list-project-assistants", "ListProjectAssistants" },
+        { "delegate-task", "DelegateTask" },
+        { "get-delegated-tasks", "GetDelegatedTasks" },
     };
 
     [Theory]
@@ -95,6 +99,16 @@ public class ToolCatalogServiceTests
     {
         var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
         Assert.Equal(ToolModules.Issues, tool.Module);
+    }
+
+    [Theory]
+    [InlineData("list-project-assistants")]
+    [InlineData("delegate-task")]
+    [InlineData("get-delegated-tasks")]
+    public void DelegationTools_AreListedUnderDelegation(string toolId)
+    {
+        var tool = Assert.Single(Catalog.GetAllTools(), t => t.ToolId == toolId);
+        Assert.Equal(ToolModules.Delegation, tool.Module);
     }
 
     [Fact]

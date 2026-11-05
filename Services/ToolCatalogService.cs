@@ -146,6 +146,27 @@ public class ToolCatalogService : IToolCatalogService
         }, sp => AIFunctionFactory.Create(sp.GetRequiredService<IssueTools>().AddIssueCommentAsync)),
         (new ToolDescriptor
         {
+            ToolId = "list-project-assistants",
+            DisplayName = "List Project Assistants",
+            Module = ToolModules.Delegation,
+            Description = "Lists the other assistants of the current project that tasks can be delegated to. Returns each assistant's ID, name, role and the tool modules it has enabled. Use it to pick the assistant to pass to DelegateTask."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<DelegationTools>().ListProjectAssistantsAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "delegate-task",
+            DisplayName = "Delegate Task",
+            Module = ToolModules.Delegation,
+            Description = "Delegates a task to another assistant of the current project, which carries it out with its own tools and service account. Delegation is asynchronous: this returns a task ID at once, the task runs in the background, and the result is posted in this conversation when it completes or fails. Call ListProjectAssistants first to pick the assistant."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<DelegationTools>().DelegateTaskAsync)),
+        (new ToolDescriptor
+        {
+            ToolId = "get-delegated-tasks",
+            DisplayName = "Get Delegated Tasks",
+            Module = ToolModules.Delegation,
+            Description = "Lists the tasks delegated in this conversation, with each task's ID, title, assigned assistant, status, the task IDs it depends on, and its result or error."
+        }, sp => AIFunctionFactory.Create(sp.GetRequiredService<DelegationTools>().GetDelegatedTasksAsync)),
+        (new ToolDescriptor
+        {
             ToolId = "link-modification",
             DisplayName = "Link Modification",
             Module = ToolModules.RevitAutomation,
