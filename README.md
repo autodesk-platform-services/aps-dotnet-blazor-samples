@@ -9,15 +9,16 @@
 
 ---
 
-A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases five key capabilities powered by the **APS Automation API**, **Data Management API**, **Forma APIs**, and **AI-powered assistants**:
+A Blazor Server web application demonstrating how to use [Autodesk Platform Services (APS)](https://aps.autodesk.com/) with .NET 10. The sample showcases six key capabilities powered by the **APS Automation API**, **Data Management API**, **Forma APIs**, **Webhooks API**, **AEC Data Model API**, and **AI-powered assistants**:
 
-- **Create Revit Models** – Programmatically create Revit cloud models inside Forma for Construction) projects.
-- **Manage Revit Links** – Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
-- **Create Sheets** – Batch-create sheets in Revit cloud models.
-- **View Models** – Select a Revit cloud model and render it interactively in the browser using the APS Viewer with Blazor JavaScript Interoperability.
-- **AI Assistants** – Chat with role-based AI assistants (one assistant per Forma project role) to automate Revit model management tasks. Pick an assistant when starting a conversation and `@mention` another assistant to bring it into the conversation. Project admins create one assistant per project role and choose which tool modules it can use: **Revit Models**, **Folders**, **Project Users**, **Issues** and **Delegation** (hand tasks to other assistants). Uses Microsoft.Extensions.AI with function calling for tool integration and real-time task tracking.
+- **Create Revit Models**–Programmatically create Revit cloud models inside Forma for Construction projects.
+- **Manage Revit Links**–Add or remove Revit links between models using a visual link matrix. Uses Autodesk Forma APIs to query linked-file relationships alongside the Automation API.
+- **Create Sheets**–Batch-create sheets in Revit cloud models.
+- **Model Viewer**–Select a Revit cloud model and render it interactively in the browser using the APS Viewer with Blazor JavaScript Interoperability.
+- **Revit Webhooks**–Get notified when Revit links are added to or removed from a Revit cloud model, using Webhooks and the AEC Data Model API. See [Revit Webhooks](#revit-webhooks).
+- **Assistants**–Chat with role-based AI assistants that act on the project as their own service accounts, with tools for Revit models, folders, project users, issues and delegation. See the [Assistants page](docs/assistants.md) for setup, tools and limitations.
 
-The app uses 3-legged OAuth to authenticate users via their Autodesk account, then lets them browse their hubs of Forma for Construction and projects through a folder explorer, configure automation jobs, and track their real-time status.
+The app uses 3-legged OAuth to authenticate users via their Autodesk account. After sign-in, each user picks one Forma for Construction hub and project, which every workflow then uses. Users can configure automation jobs and track their status.
 
 ![thumbnail](thumbnail.png)
 
@@ -30,14 +31,17 @@ The app uses 3-legged OAuth to authenticate users via their Autodesk account, th
 
 ## Usage
 
-1. Sign in with your Autodesk account via the **Sign In** button on the home page.
-2. Choose one of the five workflows from the home page cards:
-   - **Create Revit Models** – select a project and target folder, fill in the model configuration, and submit.
-   - **Manage Revit Links** – select a project, build a link matrix between models, and apply it.
-   - **Create Sheets** – select a project and Revit model, define the sheet list, and submit.
-   - **View Models** – select a project, then select a .rvt model from the list to render it in the APS Viewer.
-   - **AI Assistants** – select a project, start a conversation with one of the assistants available for your project roles (or continue an existing one), `@mention` another assistant (e.g. `@bimmanagerassistant`) to route a message to it, and interact through natural language using the tools the assistant was given (grouped by module).
-3. For the automation workflows (Create Revit Models, Manage Revit Links, Create Sheets, and AI Assistants), track job progress on the corresponding tracking page or task panel; results are updated in real time. **View Models** is read-only and has no tracking page.
+1. Sign in with your Autodesk account with the **Sign In** button in the header or on the `/signin` page.
+2. Pick a hub and project at `/projects`. The list shows only Forma projects in US-region hubs, and hides projects whose name contains "Component Library". Your choice is saved per user, and every workflow uses it. To switch, use **Change Project** in the header.
+3. Choose one of the six workflows from the home page cards:
+   - **Create Revit Models**–pick a target folder, then choose a template model, fill in the model names (using the folder's naming standard when it has one), and submit.
+   - **Manage Revit Links**–the link matrix between the project's models loads automatically. Change the links you want and apply them.
+   - **Create Sheets**–pick a Revit model, enter a title block template name, define the sheets, and submit.
+   - **Model Viewer**–pick an `.rvt` model from the dropdown to render it in the APS Viewer. Models whose name contains "template" aren't listed.
+   - **Revit Webhooks**–subscribe to link changes on a Revit cloud model. See [Revit Webhooks](#revit-webhooks).
+   - **Assistants**–chat with the assistants for your project roles. See the [Assistants page](docs/assistants.md).
+4. Project administrators also see a **Settings** card, where they configure the project's assistants.
+5. Track Create Revit Models, Manage Revit Links and Create Sheets jobs on their tracking pages: `/{ProjectId}/model-creation-tracking`, `/{ProjectId}/revit-links-change-tracking` and `/{ProjectId}/sheet-creation-tracking`. These pages poll the job status on a timer, so updates aren't real time. **Model Viewer** is read-only and has no tracking page.
 
 https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
@@ -47,40 +51,32 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
 ### Prerequisites
 
-- [Autodesk Platform Services app credentials](https://aps.autodesk.com/myapps/) (Client ID & Client Secret) with the following APIs enabled:
+- [Autodesk Platform Services app credentials](https://aps.autodesk.com/myapps/) (Client ID & Client Secret) for an app that can use the following APIs:
   - Data Management API
   - Forma for Construction API
   - Automation API
   - Model Derivative API
+  - Webhooks API
+  - AEC Data Model API
+  - Forma Account Admin API
+  - Forma Issues API
+  - Secure Service Accounts API
+
+  See the [APS documentation](https://aps.autodesk.com/developer/documentation) for each API.
 - A provisioned **Forma for Construction** account with at least one hub and project
 - **Automation Activity** deployed for [APS Automation API Revit MCP Tools Sample](https://github.com/autodesk-platform-services/aps-automation-api-revit-mcp-tools-sample)
 - [.NET 10 SDK](https://dotnet.microsoft.com/en-us/download/dotnet/10.0)
-- A valid **Callback URL** registered on your APS app (e.g. `https://localhost:7000/api/auth/callback`)
+- A valid **Callback URL** registered on your APS app (e.g. `https://localhost:7191/api/auth/callback`). The launch profiles use `https://localhost:7191` and `http://localhost:5271`.
 - **[Ollama](https://ollama.com/)** installed and running locally (or accessible remote endpoint) with a language model that supports function calling (e.g., `llama3.1:8b`)
-- **[ngrok](https://ngrok.com/)** (or similar tunneling tool) for exposing webhook endpoints to receive publish completion callbacks
+- **[ngrok](https://ngrok.com/)** (or a similar tunneling tool) to expose two webhook endpoints: the Data Management webhook (`/api/webhooks/version-added`) used for assistant publish tracking, and the Revit Webhooks callback (`/api/revit-webhooks`)
 
-> **Note (AI Assistants):** Creating assistants requires the Project Admin role on the selected project. Users chat only with the assistants created for their own project roles. The LLM must support function calling for the assistant's tools to work properly.
+> **Note (Assistants):** Creating assistants requires the Project Administrator access level on the selected project. Users chat only with the assistants created for their own project roles. The LLM must support function calling for the assistant's tools to work properly.
 
-#### Agent tool modules
+### Assistants
 
-Every agent action runs as the agent's own **service account** (SSA), which is created and added to the project when the agent is created, so ACC records the agent, not the signed-in user, as the author of its changes. Some modules need extra setup:
+Assistants are role-based AI assistants that chat with project members and act on the project through tools for Revit models, folders, project users, issues and delegation. Each assistant acts as its own service account, so Forma records the assistant as the author of its changes. Project administrators create them under **Settings → Assistants**, and the feature needs a running Ollama instance with a function-calling model. See the [Assistants page](docs/assistants.md) for setup, tools and limitations.
 
-- **Revit Models** – listing and publishing need the service account to have access to the project folders. Linked Revit files are returned only for models published after 2025-02-07, and only links the service account can download.
-- **Folders** – new folders are created under "Project Files" unless a parent folder is given. The service account needs Edit or Manage permission on the parent folder. Existing folders are reused, so repeating a request does not create duplicates.
-- **Project Users** – hub user search uses a 2-legged token with `account:read`, so the APS app must be provisioned as a **custom integration** in the ACC account. Adding users and changing their role or company needs the agent's service account to have **project admin** access (grant it the Project Administration product).
-- **Issues** – using Issues through a service account needs a **Forma Build** subscription on that service account. The ACC Issues API has no delete: agents can close an issue by setting its status to `closed`, but deleting it must be done in the ACC UI.
-- **Delegation** – an assistant with these tools (for example the BIM Manager assistant) can list the other assistants in the project and hand tasks to them. Delegation is asynchronous: the assistant replies at once, and each delegate runs the task in the background as itself, with its own service account and its own enabled tools. Delegates can't delegate further. A task can depend on earlier delegated tasks in the same conversation; it waits until they complete and fails if one of them fails. Results and failures are posted in the originating conversation by the delegate and shown in the Tasks panel. Each delegate needs its own service account, project access, and the tool modules the task requires.
-
-#### APS apps for assistants
-
-Service accounts are owned by APS apps that project admins add per project under **Settings → Assistants → APS apps for assistants**. No `appsettings.json` entry is needed.
-
-- Each app must be a **server-to-server** APS app. Its client ID and secret are checked against APS when you add the app or update its secret, and a client ID can be registered in one project only.
-- One APS app can own at most **10 service accounts**, so each app adds room for 10 assistants. New assistants are created in the first app that has a free slot. When every app is full, add another app to create more assistants.
-- **Update secret** replaces a rotated client secret. **Remove** deletes every assistant (and its service account) that the app owns.
-- Client secrets are stored in **plaintext** in `Data/ssa-apps.json`, like the other files in `Data/`. The directory is git-ignored and excluded from publish, but protect it on any host that runs the sample.
-
-> **Upgrading from the single `SsaApp` configuration:** the `SsaApp` section in `appsettings.json` is no longer read. In each project, add your former `SsaApp` client ID and secret under **Settings → Assistants**. Existing assistants whose service accounts belong to that app are linked to it automatically. Assistants that aren't linked can't chat and should be deleted.
+> **⚠️ Security:** `Data/ssa-apps.json` (APS app client secrets) and `Data/ssa-keys.json` (service account private keys) are stored in **plaintext**. Protect the `Data/` directory on any host that runs the sample.
 
 ---
 
@@ -112,11 +108,20 @@ Service accounts are owned by APS apps that project admins add per project under
      },
      "Webhooks": {
        "CallbackUrl": "<ngrok-url>/api/webhooks/version-added"
+     },
+     "RevitWebhooks": {
+       "CallbackBaseUrl": "<ngrok-url>/api/revit-webhooks"
      }
    }
    ```
 
-   `Agent:MaxToolIterations` (optional, default `10`) limits how many rounds of tool calls an assistant can make for a single request.
+   The `Agent` keys configure the assistants' model:
+
+   | Key | Code default | Notes |
+   | --- | --- | --- |
+   | `Agent:ModelName` | `llama3` | Must be set. The shipped `appsettings.json` has an empty string, which overrides the code default. |
+   | `Agent:OllamaEndpoint` | `http://localhost:11434` | Must be set. The shipped empty string overrides the code default, and the chat client can't start without an endpoint. |
+   | `Agent:MaxToolIterations` | `10` | Optional. Limits how many rounds of tool calls an assistant can make for a single request. |
 
    Using User Secrets (recommended):
 
@@ -127,7 +132,9 @@ Service accounts are owned by APS apps that project admins add per project under
    dotnet user-secrets set "Forge:RevitAutomationActivity" "<your-activity-alias>"
    dotnet user-secrets set "Agent:ModelName" "llama3.1:8b"
    dotnet user-secrets set "Agent:OllamaEndpoint" "http://localhost:11434"
+   dotnet user-secrets set "Agent:MaxToolIterations" "10"
    dotnet user-secrets set "Webhooks:CallbackUrl" "<ngrok-url>/api/webhooks/version-added"
+   dotnet user-secrets set "RevitWebhooks:CallbackBaseUrl" "<ngrok-url>/api/revit-webhooks"
    ```
 
 3. **Run the application**
@@ -136,17 +143,34 @@ Service accounts are owned by APS apps that project admins add per project under
    dotnet run
    ```
 
-   Navigate to `https://localhost:<port>` in your browser.
+   `dotnet run` uses the first launch profile, `http`, at `http://localhost:5271`. To serve `https://localhost:7191` as well, run `dotnet run --launch-profile https`. Open that URL in your browser, and register the matching callback URL on your APS app.
+
+### Running the tests
+
+The `ApsSamples.Tests` project holds xUnit tests. Run them from the repository root:
+
+```bash
+dotnet test
+```
 
 ---
+
+### Revit Webhooks
+
+The **Revit Webhooks** page at `/revit-webhooks` subscribes to a Revit cloud worksharing model and reports when Revit links are added or removed (`LinkAdded` and `LinkRemoved` events). It listens for the model's publish or sync events, then reads the model's links through the AEC Data Model API to find what changed.
+
+- Set `RevitWebhooks:CallbackBaseUrl` to your public URL followed by `/api/revit-webhooks`. The app appends `/model-publish` or `/model-sync` for each subscription, so the URL must be reachable by APS (for example, through ngrok).
+- Subscriptions and their event log are stored in `Data/revit-webhook-subscriptions.json` and `Data/revit-webhook-events.json`. Like the other files in `Data/`, this is a demo-only file store.
+- The `/api/revit-webhooks/demo-receiver` endpoint only logs the payload it receives, so you can try a subscription without an external receiver.
 
 ### Deployment
 
 When deploying to a hosting environment (e.g. Azure App Service):
 
-- Set the `Forge:*`, `Agent:*`, and `Webhooks:*` configuration values as environment variables or application settings.
+- Set the `Forge:*`, `Agent:*`, `Webhooks:*`, and `RevitWebhooks:*` configuration values as environment variables or application settings.
 - Ensure the **Callback URL** registered on your APS app matches the deployed URL.
 - Configure the `Webhooks:CallbackUrl` to point to your deployed application's webhook endpoint (no longer using ngrok in production).
+- Set `RevitWebhooks:CallbackBaseUrl` to your deployed URL followed by `/api/revit-webhooks`.
 - Automation API workitems use ngrok-style HTTP callbacks on the `/da` path — configure any reverse proxy to pass that path through without HTTPS redirection.
 - The `GET /api/auth/viewer-token` endpoint is called from the browser by the APS Viewer and must be reachable over HTTPS on the deployed origin.
 
