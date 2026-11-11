@@ -1,13 +1,13 @@
 # Assistants
 
-The Assistants module lets project members chat with role-based AI assistants that act on an Autodesk Construction Cloud (ACC) project. They can list and publish Revit models, create folders, manage project users, work with issues, and hand tasks to each other. This page covers setup, management, chat, the tools, and how the module works inside. For the rest of the sample, see the [README](../README.md).
+The Assistants module lets project members chat with role-based AI assistants that act on an Autodesk Forma project. They can list and publish Revit models, create folders, manage project users, work with issues, and hand tasks to each other. This page covers setup, management, chat, the tools, and how the module works inside. For the rest of the sample, see the [README](../README.md).
 
 ---
 
 ## Overview
 
 - An assistant belongs to one project and one project role. A project can have one assistant per role, named "{Role} Assistant" (for example "BIM Manager Assistant").
-- Each assistant acts as its own **secure service account (SSA)**. The SSA is created and added to the project when the assistant is created. ACC records the assistant, not the signed-in user, as the author of its changes.
+- Each assistant acts as its own **secure service account (SSA)**. The SSA is created and added to the project when the assistant is created. Forma records the assistant, not the signed-in user, as the author of its changes.
 - Project administrators create assistants under **Settings → Assistants** and choose the Forma products and tools each one gets.
 - Users chat only with the assistants created for their own project roles, on the **Assistants** page (`/assistants`).
 - Assistants run on a local or remote [Ollama](https://ollama.com/) model through [Microsoft.Extensions.AI](https://devblogs.microsoft.com/dotnet/introducing-microsoft-extensions-ai-preview/) and Microsoft.Agents.AI.
@@ -50,7 +50,7 @@ For SSA naming and key handling, see the APS [secure service account best practi
 
 ### Extra setup for some tools
 
-- **Hub user search** (`search-hub-users`) uses a 2-legged `account:read` token of the main app (`Forge:ClientId`), not the SSA. The APS app must be provisioned as a **custom integration** in the ACC account.
+- **Hub user search** (`search-hub-users`) uses a 2-legged `account:read` token of the main app (`Forge:ClientId`), not the SSA. The APS app must be provisioned as a **custom integration** in the Forma account.
 - **Adding and updating project users** needs the assistant's SSA to have project administrator access. Grant it the **Project Administration** product in the wizard.
 - **Issues** through an SSA needs a **Forma Build** subscription on that SSA and access to Issues in the project.
 - **Folders** needs the SSA to have Edit or Manage permission on the parent folder.
@@ -71,7 +71,7 @@ Use an `https` URL. The app redirects plain HTTP requests to HTTPS on every path
 
 ### Who can manage assistants
 
-Only users with the ACC **Project Administrator** access level on the selected project can open **Settings** (`/settings`) and **Settings → Assistants** (`/settings/assistants`). This is an access level, not a project role name. The Home page shows the **Settings** card only to these users.
+Only users with the Forma **Project Administrator** access level on the selected project can open **Settings** (`/settings`) and **Settings → Assistants** (`/settings/assistants`). This is an access level, not a project role name. The Home page shows the **Settings** card only to these users.
 
 ### Create an assistant
 
@@ -122,7 +122,7 @@ A temporary **DEV: Delete All SSA Accounts** button deletes **every SSA** owned 
 
 ### Who sees which assistant
 
-The **Assistants** page (`/assistants`) shows the project's assistants whose role matches one of the signed-in user's ACC project roles, ignoring case. If none match, the page shows "No assistants are configured for your role. Contact your project admin."
+The **Assistants** page (`/assistants`) shows the project's assistants whose role matches one of the signed-in user's Forma project roles, ignoring case. If none match, the page shows "No assistants are configured for your role. Contact your project admin."
 
 - With no conversations and one available assistant, a conversation starts at once.
 - With several assistants, pick one under **Select an assistant to start a conversation**. That assistant is the conversation's primary assistant.
@@ -168,7 +168,7 @@ The model calls each tool by its function name, which is the C# method name with
 | `publish-revit-model` (`PublishRevitModel`) | Publishes a Revit cloud worksharing model and creates a tracked task. | Data Management `C4RModelPublish` command; Webhooks `dm.version.added` | See [Tasks panel and publish tracking](#tasks-panel-and-publish-tracking). |
 | `check-model-publish-eligibility` (`CheckModelPublishEligibility`) | Says whether a model was never published, published, failed its last publish or has a publish in progress. | Data Management `C4RModelGetPublishJob` command | Any error from the command counts as "never published". |
 | `list-unpublished-models` (`ListUnpublishedModels`) | Lists the models whose last publish job is not found or failed. | Same as above, per model | Runs one command per model. |
-| `get-linked-revit-files` (`GetLinkedRevitFiles`) | Lists the models linked to a host model's latest published version, with name, item ID, version ID and publish status. | Data Management item tip; ACC Revit cloud model (RCM) linked files | Covers only models published after 2025-02-07. Links the SSA can't download are left out. |
+| `get-linked-revit-files` (`GetLinkedRevitFiles`) | Lists the models linked to a host model's latest published version, with name, item ID, version ID and publish status. | Data Management item tip; Forma Revit cloud model (RCM) linked files | Covers only models published after 2025-02-07. Links the SSA can't download are left out. |
 
 ### Folders
 
@@ -186,11 +186,11 @@ The model calls each tool by its function name, which is the C# method name with
 
 | Tool ID (function) | What it does | APS API | Limits and permissions |
 |---|---|---|---|
-| `search-hub-users` (`SearchHubUsers`) | Searches the account's users by part of a name or email. | ACC Account Admin (account users) | App 2-legged `account:read` token, not the SSA. US region only, up to 50 results. Needs a name or an email. The app must be a custom integration in the ACC account. |
-| `find-project-users` (`FindProjectUsers`) | Finds project users by part of a name or email, with company, roles, access levels and products. | ACC Account Admin (project users) | Up to 50 results. |
-| `list-project-roles-companies` (`ListProjectRolesAndCompanies`) | Lists the roles and companies that can be assigned in the project. | ACC Account Admin | |
-| `add-project-user` (`AddUserToProject`) | Adds a user by email with a role and, optionally, a company and products (Docs as member by default). | ACC Account Admin (assign project user) | Does nothing if the email is already a project user. The SSA needs project administrator access. |
-| `update-project-user` (`UpdateProjectUser`) | Changes a project user's role or company, found by exact email. A new role replaces the current roles. | ACC Account Admin | The SSA needs project administrator access. |
+| `search-hub-users` (`SearchHubUsers`) | Searches the account's users by part of a name or email. | Forma Account Admin (account users) | App 2-legged `account:read` token, not the SSA. US region only, up to 50 results. Needs a name or an email. The app must be a custom integration in the Forma account. |
+| `find-project-users` (`FindProjectUsers`) | Finds project users by part of a name or email, with company, roles, access levels and products. | Forma Account Admin (project users) | Up to 50 results. |
+| `list-project-roles-companies` (`ListProjectRolesAndCompanies`) | Lists the roles and companies that can be assigned in the project. | Forma Account Admin | |
+| `add-project-user` (`AddUserToProject`) | Adds a user by email with a role and, optionally, a company and products (Docs as member by default). | Forma Account Admin (assign project user) | Does nothing if the email is already a project user. The SSA needs project administrator access. |
+| `update-project-user` (`UpdateProjectUser`) | Changes a project user's role or company, found by exact email. A new role replaces the current roles. | Forma Account Admin | The SSA needs project administrator access. |
 
 There is no tool to remove a project user.
 
@@ -198,18 +198,18 @@ There is no tool to remove a project user.
 
 | Tool ID (function) | What it does | APS API | Limits and permissions |
 |---|---|---|---|
-| `search-issues` (`SearchIssues`) | Searches issues by text, status and assignee email. | ACC Issues v1 | 1 to 100 results, 25 by default. |
-| `get-issue` (`GetIssue`) | Gets an issue's details and comments. | ACC Issues v1 | |
-| `list-issue-types` (`ListIssueTypes`) | Lists the active issue types and subtypes. | ACC Issues v1 | |
-| `create-issue` (`CreateIssue`) | Creates an issue with a title and subtype, and optionally a description, assignee, due date and status (`open` by default). | ACC Issues v1 | Assignees must be project users with an Autodesk ID. |
-| `update-issue` (`UpdateIssue`) | Changes an issue's title, description, status, assignee or due date. | ACC Issues v1 | |
-| `add-issue-comment` (`AddIssueComment`) | Adds a comment to an issue. | ACC Issues v1 | |
+| `search-issues` (`SearchIssues`) | Searches issues by text, status and assignee email. | Forma Issues v1 | 1 to 100 results, 25 by default. |
+| `get-issue` (`GetIssue`) | Gets an issue's details and comments. | Forma Issues v1 | |
+| `list-issue-types` (`ListIssueTypes`) | Lists the active issue types and subtypes. | Forma Issues v1 | |
+| `create-issue` (`CreateIssue`) | Creates an issue with a title and subtype, and optionally a description, assignee, due date and status (`open` by default). | Forma Issues v1 | Assignees must be project users with an Autodesk ID. |
+| `update-issue` (`UpdateIssue`) | Changes an issue's title, description, status, assignee or due date. | Forma Issues v1 | |
+| `add-issue-comment` (`AddIssueComment`) | Adds a comment to an issue. | Forma Issues v1 | |
 
 - Titles can have at most 100 characters and descriptions at most 1000.
 - Statuses: `draft`, `open`, `pending`, `in_progress`, `completed`, `in_review`, `not_approved`, `in_dispute` and `closed`.
 - Due dates use `yyyy-MM-dd`, for example `2026-12-31`.
 - Every Issues tool needs a Forma Build subscription on the SSA.
-- The ACC Issues API has no delete. Assistants close an issue by setting its status to `closed`; deleting it must be done in the ACC UI.
+- The Forma Issues API has no delete. Assistants close an issue by setting its status to `closed`; deleting it must be done in the Forma UI.
 
 ### Delegation
 

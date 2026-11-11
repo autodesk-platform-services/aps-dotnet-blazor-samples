@@ -32,7 +32,7 @@ The app uses 3-legged OAuth to authenticate users via their Autodesk account. Af
 ## Usage
 
 1. Sign in with your Autodesk account with the **Sign In** button in the header or on the `/signin` page.
-2. Pick a hub and project at `/projects`. The list shows only ACC projects in US-region hubs, and hides projects whose name contains "Component Library". Your choice is saved per user, and every workflow uses it. To switch, use **Change Project** in the header.
+2. Pick a hub and project at `/projects`. The list shows only Forma projects in US-region hubs, and hides projects whose name contains "Component Library". Your choice is saved per user, and every workflow uses it. To switch, use **Change Project** in the header.
 3. Choose one of the six workflows from the home page cards:
    - **Create Revit Models**–pick a target folder, then choose a template model, fill in the model names (using the folder's naming standard when it has one), and submit.
    - **Manage Revit Links**–the link matrix between the project's models loads automatically. Change the links you want and apply them.
@@ -58,8 +58,8 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
   - Model Derivative API
   - Webhooks API
   - AEC Data Model API
-  - ACC Account Admin API
-  - ACC Issues API
+  - Forma Account Admin API
+  - Forma Issues API
   - Secure Service Accounts API
 
   See the [APS documentation](https://aps.autodesk.com/developer/documentation) for each API.
@@ -74,7 +74,7 @@ https://github.com/user-attachments/assets/8d185426-96b4-4d91-8dba-1b3a168ee8ce
 
 ### Assistants
 
-Assistants are role-based AI assistants that chat with project members and act on the project through tools for Revit models, folders, project users, issues and delegation. Each assistant acts as its own service account, so ACC records the assistant as the author of its changes. Project administrators create them under **Settings → Assistants**, and the feature needs a running Ollama instance with a function-calling model. See the [Assistants page](docs/assistants.md) for setup, tools and limitations.
+Assistants are role-based AI assistants that chat with project members and act on the project through tools for Revit models, folders, project users, issues and delegation. Each assistant acts as its own service account, so Forma records the assistant as the author of its changes. Project administrators create them under **Settings → Assistants**, and the feature needs a running Ollama instance with a function-calling model. See the [Assistants page](docs/assistants.md) for setup, tools and limitations.
 
 > **⚠️ Security:** `Data/ssa-apps.json` (APS app client secrets) and `Data/ssa-keys.json` (service account private keys) are stored in **plaintext**. Protect the `Data/` directory on any host that runs the sample.
 
